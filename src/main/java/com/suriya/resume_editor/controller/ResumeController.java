@@ -1,0 +1,144 @@
+package com.suriya.resume_editor.controller;
+
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.suriya.resume_editor.model.GitHubFile;
+import com.suriya.resume_editor.model.ParseRequest;
+import com.suriya.resume_editor.model.ParseResponse;
+import com.suriya.resume_editor.model.ResumeData;
+import com.suriya.resume_editor.model.UpdateRequest;
+import com.suriya.resume_editor.service.GitHubService;
+import com.suriya.resume_editor.service.HtmlReconstructionService;
+import com.suriya.resume_editor.service.HuggingFaceService;
+import org.springframework.http.ResponseEntity;
+import jakarta.servlet.http.HttpServletRequest;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+import java.util.Map;
+
+@RestController
+@RequestMapping("/resume")
+public class ResumeController {
+
+    private final GitHubService gitHubService;
+    private final HuggingFaceService huggingFaceService;
+    private final HtmlReconstructionService htmlReconstructionService;
+    private final com.suriya.resume_editor.service.JwtService jwtService;
+    private final ObjectMapper objectMapper;
+
+    public ResumeController(GitHubService gitHubService,
+                            HuggingFaceService huggingFaceService,
+                            HtmlReconstructionService htmlReconstructionService,
+                            com.suriya.resume_editor.service.JwtService jwtService) {
+        this.gitHubService = gitHubService;
+        this.huggingFaceService = huggingFaceService;
+        this.htmlReconstructionService = htmlReconstructionService;
+        this.jwtService = jwtService;
+        this.objectMapper = new ObjectMapper();
+    }
+
+    /**
+     * POST /resume/parse
+     * Fetches index.html from the given GitHub repo, sends it to HuggingFace AI,
+     * and returns the structured ResumeData alongside the sha and originalHtml
+     * that the Android app must echo back in the update request.
+     *
+     * The GitHub access token is retrieved from the authenticated OAuth2 session —
+     * clients never need to send it.
+     *
+     * Request body: { "owner": "...", "repo": "..." }
+     */
+    @PostMapping("/parse")
+    public ResponseEntity<?> parse(@RequestBody ParseRequest request,
+                                   HttpServletRequest httpRequest) {
+
+        String token = resolveGitHubToken(httpRequest);
+
+        // 1. Fetch HTML from GitHub (also returns sha for future commit)
+        GitHubFile gitHubFile = gitHubService.fetchPortfolioHtml(
+                request.getOwner(), request.getRepo(), token);
+
+        String rawHtml = gitHubFile.getContent();
+        String sha     = gitHubFile.getSha();
+
+        // 2. Send HTML to AI and get back structured data
+        ResumeData resumeData = huggingFaceService.parseHtml(rawHtml);
+
+        // 3. Return all three — Android must store sha and originalHtml
+        //    and send them back in the update request
+        ParseResponse response = new ParseResponse(sha, rawHtml, resumeData);
+        return ResponseEntity.ok(response);
+    }
+
+    /**
+     * POST /resume/update
+     * Takes the edited ResumeData, reconstructs the HTML using the original as a
+     * template, then commits the updated file back to GitHub.
+     *
+     * Request body:
+     * {
+     *   "owner": "...", "repo": "...",
+     *   "sha": "abc123",          ← from parse response
+     *   "originalHtml": "...",    ← from parse response
+     *   "resumeData": { ... }     ← user-edited data
+     * }
+     */
+    @PostMapping("/update")
+    public ResponseEntity<?> update(@RequestBody UpdateRequest request,
+                                    HttpServletRequest httpRequest) {
+
+        String token = resolveGitHubToken(httpRequest);
+
+        // 1. Surgically inject edited data back into the original HTML template
+        String updatedHtml = htmlReconstructionService.reconstructHtml(
+                request.getOriginalHtml(), request.getResumeData());
+
+        // 2. Commit the updated HTML back to GitHub
+        String commitResponseJson = gitHubService.commitPortfolioHtml(
+                request.getOwner(), request.getRepo(), token,
+                request.getSha(), updatedHtml);
+
+        // 3. Extract the commit URL from the GitHub API response
+        String commitUrl = extractCommitUrl(commitResponseJson);
+
+        return ResponseEntity.ok(Map.of(
+                "message",   "Portfolio updated successfully",
+                "commitUrl", commitUrl
+        ));
+    }
+
+    // -------------------------------------------------------------------------
+    // Helpers
+    // -------------------------------------------------------------------------
+
+    /**
+     * Resolves the GitHub access token from the JWT in the Authorization header.
+     */
+    private String resolveGitHubToken(HttpServletRequest request) {
+        String token = jwtService.extractGitHubToken(request);
+        if (token == null) {
+            throw new RuntimeException("GitHub access token not found in JWT claims.");
+        }
+        return token;
+    }
+
+    /**
+     * Extracts the commit HTML URL from GitHub's PUT /contents response JSON.
+     * Falls back to an empty string if the field is not present.
+     *
+     * GitHub response shape:
+     * { "commit": { "html_url": "https://github.com/..." }, "content": { ... } }
+     */
+    private String extractCommitUrl(String commitResponseJson) {
+        try {
+            JsonNode root = objectMapper.readTree(commitResponseJson);
+            JsonNode htmlUrl = root.path("commit").path("html_url");
+            return htmlUrl.isMissingNode() ? "" : htmlUrl.asText();
+        } catch (Exception e) {
+            return "";
+        }
+    }
+}
