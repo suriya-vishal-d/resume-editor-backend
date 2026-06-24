@@ -22,6 +22,8 @@ public class AuthController {
     private final OAuth2AuthorizedClientService authorizedClientService;
     private final com.suriya.resume_editor.service.JwtService jwtService;
 
+
+
     public AuthController(OAuth2AuthorizedClientService authorizedClientService,
                           com.suriya.resume_editor.service.JwtService jwtService) {
         this.authorizedClientService = authorizedClientService;
