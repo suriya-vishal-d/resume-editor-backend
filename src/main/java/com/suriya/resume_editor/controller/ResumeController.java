@@ -61,8 +61,9 @@ public class ResumeController {
         String filePath = (request.getFilePath() != null && !request.getFilePath().isBlank())
                 ? request.getFilePath().replaceAll("^/+", "") // strip leading slashes
                 : "index.html";
+        String repoName = (request.getRepo() != null) ? request.getRepo().replaceAll("[/.]+$", "") : "";
         GitHubFile gitHubFile = gitHubService.fetchPortfolioHtml(
-                request.getOwner(), request.getRepo(), filePath, token);
+                request.getOwner(), repoName, filePath, token);
 
         String rawHtml = gitHubFile.getContent();
         String sha     = gitHubFile.getSha();
@@ -103,9 +104,9 @@ public class ResumeController {
         String filePath = (request.getFilePath() != null && !request.getFilePath().isBlank())
                 ? request.getFilePath().replaceAll("^/+", "")
                 : "index.html";
-
+        String repoName = (request.getRepo() != null) ? request.getRepo().replaceAll("[/.]+$", "") : "";
         String commitResponseJson = gitHubService.commitPortfolioHtml(
-                request.getOwner(), request.getRepo(), token,
+                request.getOwner(), repoName, token,
                 request.getSha(), updatedHtml, filePath);
 
         // 3. Extract the commit URL from the GitHub API response
