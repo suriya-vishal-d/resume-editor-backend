@@ -13,6 +13,7 @@ import com.suriya.resume_editor.service.HuggingFaceService;
 import org.springframework.http.ResponseEntity;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -77,7 +78,7 @@ public class ResumeController {
     }
 
     /**
-     * POST /resume/update
+     * PUT /resume/update
      * Takes the edited ResumeData, reconstructs the HTML using the original as a
      * template, then commits the updated file back to GitHub.
      *
@@ -89,7 +90,7 @@ public class ResumeController {
      *   "resumeData": { ... }     ← user-edited data
      * }
      */
-    @PostMapping("/update")
+    @PutMapping("/update")
     public ResponseEntity<?> update(@RequestBody UpdateRequest request,
                                     HttpServletRequest httpRequest) {
 
