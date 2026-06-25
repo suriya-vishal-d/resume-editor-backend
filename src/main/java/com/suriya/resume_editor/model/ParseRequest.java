@@ -6,4 +6,5 @@ import lombok.Data;
 public class ParseRequest {
     private String owner;
     private String repo;
+    private String filePath;
 }

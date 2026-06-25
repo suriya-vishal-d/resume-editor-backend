@@ -6,7 +6,9 @@ import lombok.Data;
 public class UpdateRequest {
     private String owner;
     private String repo;
+    private String filePath;
     private String sha;
     private String originalHtml;
     private ResumeData resumeData;
 }
+
