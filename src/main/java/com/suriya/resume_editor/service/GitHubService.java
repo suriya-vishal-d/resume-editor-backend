@@ -28,8 +28,8 @@ public class GitHubService {
      *  - content: the decoded (plain) HTML string
      *  - sha:     the blob SHA required for committing back
      */
-    public GitHubFile fetchPortfolioHtml(String owner, String repo, String filePath, String token) {
-        String url = GITHUB_API_BASE + "/repos/" + owner + "/" + repo + "/contents/" + filePath;
+    public GitHubFile fetchPortfolioHtml(String owner, String repo, String token) {
+        String url = GITHUB_API_BASE + "/repos/" + owner + "/" + repo + "/contents/index.html";
 
         GitHubFile file;
         try {
@@ -41,8 +41,8 @@ public class GitHubService {
                     .body(GitHubFile.class);
         } catch (HttpClientErrorException.NotFound e) {
             throw new RepoNotFoundException(
-                    "'" + filePath + "' not found in repository '" + owner + "/" + repo + "'. " +
-                    "Make sure the file exists and the path is correct.");
+                    "index.html not found in repository '" + owner + "/" + repo + "'. " +
+                    "Make sure the file exists at the root of the repo.");
         } catch (HttpClientErrorException.Unauthorized e) {
             throw new GitHubCommitException(
                     "GitHub token is invalid or expired. Please re-authenticate.");
@@ -70,9 +70,9 @@ public class GitHubService {
      *            this to prevent conflicts (acts like an optimistic lock).
      */
     public String commitPortfolioHtml(String owner, String repo, String token,
-                                      String sha, String updatedHtml, String filePath) {
+                                      String sha, String updatedHtml) {
 
-        String url = GITHUB_API_BASE + "/repos/" + owner + "/" + repo + "/contents/" + filePath;
+        String url = GITHUB_API_BASE + "/repos/" + owner + "/" + repo + "/contents/index.html";
 
         // GitHub Contents API expects base64-encoded content (no line breaks)
         String encodedContent = Base64.getEncoder().encodeToString(
@@ -95,7 +95,7 @@ public class GitHubService {
                     .body(String.class);
         } catch (HttpClientErrorException.NotFound e) {
             throw new RepoNotFoundException(
-                    "Cannot commit — '" + filePath + "' not found in repository '" + owner + "/" + repo + "'.");
+                    "Cannot commit — index.html not found in repository '" + owner + "/" + repo + "'.");
         } catch (HttpClientErrorException.Unauthorized e) {
             throw new GitHubCommitException(
                     "GitHub token is invalid or expired. Please re-authenticate.");
