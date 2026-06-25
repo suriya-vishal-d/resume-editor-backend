@@ -74,6 +74,13 @@ public class GitHubService {
 
         String url = GITHUB_API_BASE + "/repos/" + owner + "/" + repo + "/contents/" + filePath;
 
+        System.out.println("DEBUG: Committing to GitHub URL: " + url);
+        if (token != null && token.length() > 10) {
+            System.out.println("DEBUG: Using token starting with: " + token.substring(0, 8) + "...");
+        } else {
+            System.out.println("DEBUG: Token is null or too short!");
+        }
+
         // GitHub Contents API expects base64-encoded content (no line breaks)
         String encodedContent = Base64.getEncoder().encodeToString(
                 updatedHtml.getBytes(StandardCharsets.UTF_8));
@@ -103,6 +110,9 @@ public class GitHubService {
             throw new GitHubCommitException(
                     "Commit conflict: the file was modified on GitHub since it was last fetched. " +
                     "Please fetch the latest version and try again.");
+        } catch (HttpClientErrorException.Forbidden e) {
+            throw new GitHubCommitException(
+                    "Permission denied: ensure your GitHub token has 'repo' scope and you have write access to this repository.");
         } catch (HttpClientErrorException e) {
             throw new GitHubCommitException(
                     "GitHub API error while committing portfolio: " + e.getStatusCode() + " " + e.getMessage());
