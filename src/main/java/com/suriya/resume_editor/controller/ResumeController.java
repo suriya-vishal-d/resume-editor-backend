@@ -13,7 +13,6 @@ import com.suriya.resume_editor.service.HuggingFaceService;
 import org.springframework.http.ResponseEntity;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -78,7 +77,7 @@ public class ResumeController {
     }
 
     /**
-     * PUT /resume/update
+     * POST /resume/update
      * Takes the edited ResumeData, reconstructs the HTML using the original as a
      * template, then commits the updated file back to GitHub.
      *
@@ -90,7 +89,7 @@ public class ResumeController {
      *   "resumeData": { ... }     ← user-edited data
      * }
      */
-    @PutMapping("/update")
+    @PostMapping("/update")
     public ResponseEntity<?> update(@RequestBody UpdateRequest request,
                                     HttpServletRequest httpRequest) {
 
@@ -104,9 +103,9 @@ public class ResumeController {
         String filePath = (request.getFilePath() != null && !request.getFilePath().isBlank())
                 ? request.getFilePath().replaceAll("^/+", "")
                 : "index.html";
-        String repoName = (request.getRepo() != null) ? request.getRepo().replaceAll("[/.]+$", "") : "";
+
         String commitResponseJson = gitHubService.commitPortfolioHtml(
-                request.getOwner(), repoName, token,
+                request.getOwner(), request.getRepo(), token,
                 request.getSha(), updatedHtml, filePath);
 
         // 3. Extract the commit URL from the GitHub API response
