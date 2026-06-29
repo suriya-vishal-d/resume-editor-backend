@@ -11,6 +11,10 @@ import org.springframework.security.oauth2.client.registration.ClientRegistratio
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.web.client.RestClient;
 
+import org.springframework.http.client.JdkClientHttpRequestFactory;
+import java.net.http.HttpClient;
+import java.time.Duration;
+
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 
@@ -53,6 +57,16 @@ public class SecurityConfig {
 
     @Bean
     public RestClient restClient() {
-        return RestClient.builder().build();
+        HttpClient httpClient = HttpClient.newBuilder()
+                .connectTimeout(Duration.ofSeconds(10))
+                .build();
+
+        JdkClientHttpRequestFactory factory = new JdkClientHttpRequestFactory(httpClient);
+        // 90-second read timeout — generous enough for the HuggingFace AI call
+        factory.setReadTimeout(Duration.ofSeconds(90));
+
+        return RestClient.builder()
+                .requestFactory(factory)
+                .build();
     }
 }

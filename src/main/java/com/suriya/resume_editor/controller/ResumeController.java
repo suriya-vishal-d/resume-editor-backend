@@ -113,12 +113,15 @@ public class ResumeController {
                 request.getOwner(), repoName, token,
                 request.getSha(), updatedHtml, filePath);
 
-        // 3. Extract the commit URL from the GitHub API response
+        // 3. Extract the commit URL and new SHA from the GitHub API response
         String commitUrl = extractCommitUrl(commitResponseJson);
+        String newSha = extractContentSha(commitResponseJson);
 
         return ResponseEntity.ok(Map.of(
-                "message",   "Portfolio updated successfully",
-                "commitUrl", commitUrl
+                "message",     "Portfolio updated successfully",
+                "commitUrl",   commitUrl,
+                "newSha",      newSha,
+                "updatedHtml", updatedHtml
         ));
     }
 
@@ -204,6 +207,19 @@ public class ResumeController {
             JsonNode root = objectMapper.readTree(commitResponseJson);
             JsonNode htmlUrl = root.path("commit").path("html_url");
             return htmlUrl.isMissingNode() ? "" : htmlUrl.asText();
+        } catch (Exception e) {
+            return "";
+        }
+    }
+
+    /**
+     * Extracts the new SHA of the updated file from GitHub's PUT /contents response JSON.
+     */
+    private String extractContentSha(String commitResponseJson) {
+        try {
+            JsonNode root = objectMapper.readTree(commitResponseJson);
+            JsonNode sha = root.path("content").path("sha");
+            return sha.isMissingNode() ? "" : sha.asText();
         } catch (Exception e) {
             return "";
         }
