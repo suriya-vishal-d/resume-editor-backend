@@ -12,11 +12,15 @@ import com.suriya.resume_editor.service.HtmlReconstructionService;
 import com.suriya.resume_editor.service.HuggingFaceService;
 import org.springframework.http.ResponseEntity;
 import jakarta.servlet.http.HttpServletRequest;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.multipart.MultipartFile;
 
+import java.io.IOException;
 import java.util.Map;
 
 @RestController
@@ -116,6 +120,61 @@ public class ResumeController {
                 "message",   "Portfolio updated successfully",
                 "commitUrl", commitUrl
         ));
+    }
+
+    /**
+     * POST /resume/upload-image
+     * Uploads an image file to the GitHub repo's images/ directory and returns
+     * the public GitHub Pages URL. The HTML update is deferred — the Android app
+     * stores the returned URL in resumeData.profileImageUrl and commits it on
+     * the next "Save & Publish" via the existing /resume/update endpoint.
+     *
+     * Request: multipart/form-data
+     *   - image: the image file (MultipartFile)
+     *   - repo:  the GitHub repository name
+     */
+    @PostMapping("/upload-image")
+    public ResponseEntity<?> uploadImage(
+            @RequestParam("image") MultipartFile image,
+            @RequestParam("repo") String repo,
+            HttpServletRequest httpRequest) {
+
+        String token = resolveGitHubToken(httpRequest);
+        String owner = jwtService.extractUsername(
+                httpRequest.getHeader("Authorization").substring(7));
+
+        String repoName = (repo != null) ? repo.replaceAll("[/.]+$", "") : "";
+
+        byte[] imageBytes;
+        try {
+            imageBytes = image.getBytes();
+        } catch (IOException e) {
+            return ResponseEntity.badRequest()
+                    .body(Map.of("error", "Failed to read image bytes: " + e.getMessage()));
+        }
+
+        String imageName = "profile.jpg";
+        String imageUrl = gitHubService.uploadProfileImage(owner, repoName, token, imageName, imageBytes);
+
+        return ResponseEntity.ok(Map.of("imageUrl", imageUrl));
+    }
+
+    // -------------------------------------------------------------------------
+    // Stats
+    // -------------------------------------------------------------------------
+
+    @GetMapping("/stats")
+    public ResponseEntity<?> getStats(
+            @RequestParam("repo") String repo,
+            HttpServletRequest httpRequest) {
+
+        String token = resolveGitHubToken(httpRequest);
+        String owner = jwtService.extractUsername(
+                httpRequest.getHeader("Authorization").substring(7));
+        String repoName = (repo != null) ? repo.replaceAll("[/.]+$", "") : "";
+
+        Map<String, Integer> stats = gitHubService.getRepoStats(owner, repoName, token);
+        return ResponseEntity.ok(stats);
     }
 
     // -------------------------------------------------------------------------

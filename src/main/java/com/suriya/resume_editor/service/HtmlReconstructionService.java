@@ -35,6 +35,14 @@ public class HtmlReconstructionService {
                     resumeData.getAbout());
 
             // ----------------------------------------------------------------
+            // Profile Photo
+            // ----------------------------------------------------------------
+            if (resumeData.getProfileImageUrl() != null) {
+                updateAttr(doc, "img.profile-photo, img.avatar, img.profile-img, img#profile-photo, img#avatar",
+                        "src", resumeData.getProfileImageUrl());
+            }
+
+            // ----------------------------------------------------------------
             // Contact links — update href only, preserve link display text
             // ----------------------------------------------------------------
             if (resumeData.getContact() != null) {
