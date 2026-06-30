@@ -50,10 +50,13 @@ public class HuggingFaceService {
         String cleanedHtml = htmlCleaner.clean(rawHtml);
 
         String systemPrompt = "You are an HTML parser. Extract portfolio details from HTML and return " +
-                "ONLY a valid JSON object. No explanation, no markdown, no code blocks. Just raw JSON.";
+                "ONLY a valid JSON object. No explanation, no markdown, no code blocks. Just raw JSON. " +
+                "IMPORTANT: Some data (like skills) may not be in the HTML body, but stored inside inline <script> " +
+                "tags as JavaScript objects (e.g., DEFAULT_DATA). You MUST read the inline scripts to extract missing data.";
 
         String userPrompt = "Parse this HTML and extract all available details into this exact JSON structure. " +
-                "If a field is not found leave it null or empty list:\n" +
+                "If a field is not found in the HTML tags, carefully check any inline <script> tags for JavaScript arrays/objects containing the data. " +
+                "If it's truly not found anywhere, leave it null or empty list:\n" +
                 "{\n" +
                 "  \"name\": \"\",\n" +
                 "  \"tagline\": \"\",\n" +

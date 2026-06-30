@@ -56,9 +56,13 @@ public class HtmlCleanerService {
         Document doc = Jsoup.parse(rawHtml);
 
         // 1. Remove entire tags that add zero text value
-        doc.select("style, script, svg, link, meta, noscript, iframe, canvas, " +
+        doc.select("style, svg, link, meta, noscript, iframe, canvas, " +
                    "template, map, track, object, embed")
            .remove();
+
+        // 1b. Remove external scripts (which are just file references), but keep inline scripts
+        // because portfolios sometimes store data (like skills arrays) inside inline JS variables.
+        doc.select("script[src]").remove();
 
         // 2. Remove HTML comments
         doc.getAllElements().forEach(el ->
