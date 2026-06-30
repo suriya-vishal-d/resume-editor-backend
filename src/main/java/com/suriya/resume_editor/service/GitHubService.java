@@ -29,6 +29,9 @@ public class GitHubService {
      * Returns a GitHubFile with:
      *  - content: the decoded (plain) HTML string
      *  - sha:     the blob SHA required for committing back
+     *
+     * Uses the Contents API first; if the file is larger than GitHub's 1 MB limit
+     * (which returns a 403), it automatically falls back to the Git Blobs API.
      */
     public GitHubFile fetchPortfolioHtml(String owner, String repo, String filePath, String token) {
         String url = GITHUB_API_BASE + "/repos/" + owner + "/" + repo + "/contents/" + filePath;
@@ -48,9 +51,20 @@ public class GitHubService {
         } catch (HttpClientErrorException.Unauthorized e) {
             throw new GitHubCommitException(
                     "GitHub token is invalid or expired. Please re-authenticate.");
+        } catch (HttpClientErrorException.Forbidden e) {
+            // GitHub returns 403 when the file exceeds the 1 MB Contents API limit.
+            // Fall back to the Git Blobs API which supports files of any size.
+            String body = e.getResponseBodyAsString();
+            if (body != null && body.contains("too large")) {
+                return fetchViaGitBlobsApi(owner, repo, filePath, token);
+            }
+            throw new GitHubCommitException(
+                    "GitHub access forbidden for '" + owner + "/" + repo + "/" + filePath + "'. " +
+                    "Ensure your token has the correct scopes. Details: " + body);
         } catch (HttpClientErrorException e) {
             throw new GitHubCommitException(
-                    "GitHub API error while fetching portfolio: " + e.getStatusCode() + " " + e.getMessage());
+                    "GitHub API error while fetching portfolio: " + e.getStatusCode() +
+                    " — " + e.getResponseBodyAsString());
         }
 
         if (file == null) {
