@@ -56,13 +56,14 @@ public class HuggingFaceService {
 
         String userPrompt = "Parse this HTML and extract all available details into this exact JSON structure. " +
                 "If a field is not found in the HTML tags, carefully check any inline <script> tags for JavaScript arrays/objects containing the data. " +
-                "If it's truly not found anywhere, leave it null or empty list:\n" +
+                "IMPORTANT: If the skills data is grouped (e.g., has 'group' and 'items'), you MUST flatten all the items into a single, flat list of strings for the 'skills' array. " +
+                "If a field is truly not found anywhere, leave it null or empty list:\n" +
                 "{\n" +
                 "  \"name\": \"\",\n" +
                 "  \"tagline\": \"\",\n" +
                 "  \"about\": \"\",\n" +
                 "  \"profileImageUrl\": \"\",\n" +
-                "  \"skills\": [],\n" +
+                "  \"skills\": [\"string1\", \"string2\"],\n" +
                 "  \"projects\": [{\"title\":\"\",\"description\":\"\",\"techStack\":[],\"link\":\"\"}],\n" +
                 "  \"experience\": [{\"company\":\"\",\"role\":\"\",\"startDate\":\"\",\"endDate\":\"\"}],\n" +
                 "  \"education\": [{\"institution\":\"\",\"degree\":\"\",\"field\":\"\",\"startYear\":\"\",\"endYear\":\"\",\"grade\":\"\"}],\n" +
