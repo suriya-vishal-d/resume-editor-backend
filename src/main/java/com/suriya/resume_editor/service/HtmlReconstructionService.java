@@ -37,9 +37,14 @@ public class HtmlReconstructionService {
             // ----------------------------------------------------------------
             // Profile Photo
             // ----------------------------------------------------------------
-            if (resumeData.getProfileImageUrl() != null) {
-                updateAttr(doc, "img.profile-photo, img.avatar, img.profile-img, img#profile-photo, img#avatar",
-                        "src", resumeData.getProfileImageUrl());
+            if (resumeData.getProfileImageUrl() != null && !resumeData.getProfileImageUrl().isBlank()) {
+                Element imgEl = doc.select("img.profile-photo, img.avatar, img.profile-img, img#profile-photo, img#avatar").first();
+                if (imgEl == null) {
+                    imgEl = doc.select("img").first();
+                }
+                if (imgEl != null) {
+                    imgEl.attr("src", resumeData.getProfileImageUrl());
+                }
             }
 
             // ----------------------------------------------------------------
