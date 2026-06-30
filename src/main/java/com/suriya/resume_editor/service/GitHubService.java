@@ -6,6 +6,8 @@ import com.suriya.resume_editor.exception.RepoNotFoundException;
 import com.suriya.resume_editor.model.GitHubFile;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.HttpClientErrorException;
+import org.springframework.web.client.HttpServerErrorException;
+import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestClient;
 
 import java.nio.charset.StandardCharsets;
@@ -51,10 +53,28 @@ public class GitHubService {
         } catch (HttpClientErrorException e) {
             throw new GitHubCommitException(
                     "GitHub API error while fetching portfolio: " + e.getStatusCode() + " " + e.getMessage());
+        } catch (HttpServerErrorException e) {
+            // GitHub Contents API returns 5xx for files larger than ~1MB.
+            // Fall back to the Git Blobs API which supports files of any size.
+            System.out.println("INFO: Contents API returned " + e.getStatusCode()
+                    + " for '" + filePath + "' — falling back to Git Blobs API (file may be >1MB).");
+            return fetchPortfolioHtmlViaBlobs(owner, repo, filePath, token);
+        } catch (ResourceAccessException e) {
+            throw new GitHubCommitException(
+                    "Timed out while connecting to GitHub. Please check your network and try again.");
         }
 
         if (file == null) {
-            throw new GitHubCommitException("Received null response from GitHub API for '" + owner + "/" + repo + "/contents/index.html'.");
+            throw new GitHubCommitException("Received null response from GitHub API for '"
+                    + owner + "/" + repo + "/contents/" + filePath + "'.");
+        }
+
+        // GitHub Contents API returns null content (and a download_url) for files >1MB.
+        // In that case fall back to the Git Blobs API.
+        if (file.getContent() == null || file.getContent().isBlank()) {
+            System.out.println("INFO: Contents API returned empty content for '" + filePath
+                    + "' (sha=" + file.getSha() + ") — falling back to Git Blobs API.");
+            return fetchPortfolioHtmlViaBlobs(owner, repo, filePath, token);
         }
 
         // GitHub returns content as base64 with newlines — strip them before decoding
@@ -63,6 +83,117 @@ public class GitHubService {
         file.setContent(decodedHtml);
 
         return file;
+    }
+
+    /**
+     * Fallback fetch using the Git Trees + Blobs API.
+     * The Contents API fails (502/empty body) for files larger than ~1MB.
+     * The Blobs API has no such restriction and always returns the full file.
+     *
+     * Steps:
+     *  1. GET /repos/{owner}/{repo}/git/trees/HEAD?recursive=1  → find the blob SHA for filePath
+     *  2. GET /repos/{owner}/{repo}/git/blobs/{blobSha}          → fetch full base64 content
+     */
+    private GitHubFile fetchPortfolioHtmlViaBlobs(String owner, String repo, String filePath, String token) {
+        // Step 1: Resolve blob SHA from the tree
+        String treeUrl = GITHUB_API_BASE + "/repos/" + owner + "/" + repo + "/git/trees/HEAD?recursive=1";
+        JsonNode tree;
+        try {
+            tree = restClient.get()
+                    .uri(treeUrl)
+                    .header("Authorization", "Bearer " + token)
+                    .header("Accept", "application/vnd.github+json")
+                    .retrieve()
+                    .body(JsonNode.class);
+        } catch (HttpClientErrorException.NotFound e) {
+            throw new RepoNotFoundException(
+                    "Repository '" + owner + "/" + repo + "' not found or default branch is not 'HEAD'.");
+        } catch (HttpClientErrorException e) {
+            throw new GitHubCommitException(
+                    "GitHub API error while fetching repository tree: " + e.getStatusCode());
+        } catch (ResourceAccessException e) {
+            throw new GitHubCommitException(
+                    "Timed out while fetching repository tree from GitHub.");
+        }
+
+        if (tree == null || !tree.has("tree")) {
+            throw new GitHubCommitException("GitHub returned an empty tree for '" + owner + "/" + repo + "'.");
+        }
+
+        // Find the blob SHA for the requested file path
+        String blobSha = null;
+        for (JsonNode entry : tree.get("tree")) {
+            if (filePath.equals(entry.path("path").asText())) {
+                blobSha = entry.path("sha").asText();
+                break;
+            }
+        }
+
+        if (blobSha == null) {
+            throw new RepoNotFoundException(
+                    "'" + filePath + "' not found in repository '" + owner + "/" + repo + "'. "
+                    + "Make sure the file exists and the path is correct.");
+        }
+
+        // Step 2: Fetch the blob content
+        String blobUrl = GITHUB_API_BASE + "/repos/" + owner + "/" + repo + "/git/blobs/" + blobSha;
+        JsonNode blob;
+        try {
+            blob = restClient.get()
+                    .uri(blobUrl)
+                    .header("Authorization", "Bearer " + token)
+                    .header("Accept", "application/vnd.github+json")
+                    .retrieve()
+                    .body(JsonNode.class);
+        } catch (HttpClientErrorException e) {
+            throw new GitHubCommitException(
+                    "GitHub API error while fetching file blob: " + e.getStatusCode());
+        } catch (ResourceAccessException e) {
+            throw new GitHubCommitException(
+                    "Timed out while fetching file blob from GitHub.");
+        }
+
+        if (blob == null) {
+            throw new GitHubCommitException("Received null blob response from GitHub for '" + filePath + "'.");
+        }
+
+        // Decode the base64 content (blobs always use base64 encoding)
+        String rawBase64 = blob.path("content").asText("").replaceAll("\\s", "");
+        if (rawBase64.isEmpty()) {
+            throw new GitHubCommitException("GitHub blob for '" + filePath + "' has empty content.");
+        }
+        String decodedHtml = new String(Base64.getDecoder().decode(rawBase64), StandardCharsets.UTF_8);
+
+        // We also need the Contents API SHA (not blob SHA) for future commits.
+        // Re-fetch just the metadata (no body decoding) from Contents API.
+        String contentsSha = resolveContentsSha(owner, repo, filePath, token, blobSha);
+
+        GitHubFile file = new GitHubFile();
+        file.setContent(decodedHtml);
+        file.setSha(contentsSha);
+        return file;
+    }
+
+    /**
+     * Fetches only the SHA of a file from the Contents API (needed for committing back).
+     * Falls back to the blob SHA if the Contents API is unavailable.
+     */
+    private String resolveContentsSha(String owner, String repo, String filePath, String token, String fallbackSha) {
+        String url = GITHUB_API_BASE + "/repos/" + owner + "/" + repo + "/contents/" + filePath;
+        try {
+            GitHubFile meta = restClient.get()
+                    .uri(url)
+                    .header("Authorization", "Bearer " + token)
+                    .header("Accept", "application/vnd.github+json")
+                    .retrieve()
+                    .body(GitHubFile.class);
+            return (meta != null && meta.getSha() != null) ? meta.getSha() : fallbackSha;
+        } catch (Exception e) {
+            // If Contents API is still failing, the blob SHA itself IS the file SHA
+            // in GitHub's object model — it will work for the commit PUT body.
+            System.err.println("WARN: Could not resolve contents SHA, using blob SHA as fallback: " + e.getMessage());
+            return fallbackSha;
+        }
     }
 
     /**
