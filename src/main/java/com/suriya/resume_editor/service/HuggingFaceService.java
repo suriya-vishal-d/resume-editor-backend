@@ -56,7 +56,7 @@ public class HuggingFaceService {
 
         String userPrompt = "Parse this HTML and extract all available details into this exact JSON structure. " +
                 "If a field is not found in the HTML tags, carefully check any inline <script> tags for JavaScript arrays/objects containing the data. " +
-                "IMPORTANT: If the skills data is grouped (e.g., has 'group' and 'items'), you MUST flatten all the items into a single, flat list of strings for the 'skills' array. " +
+                "IMPORTANT: If data (like skills, certifications) is grouped or represented as objects, you MUST flatten it into a simple list of strings. " +
                 "If a field is truly not found anywhere, leave it null or empty list:\n" +
                 "{\n" +
                 "  \"name\": \"\",\n" +
@@ -68,11 +68,11 @@ public class HuggingFaceService {
                 "  \"experience\": [{\"company\":\"\",\"role\":\"\",\"startDate\":\"\",\"endDate\":\"\"}],\n" +
                 "  \"education\": [{\"institution\":\"\",\"degree\":\"\",\"field\":\"\",\"startYear\":\"\",\"endYear\":\"\",\"grade\":\"\"}],\n" +
                 "  \"contact\": {\"email\":\"\",\"linkedin\":\"\",\"github\":\"\"},\n" +
-                "  \"certifications\": [],\n" +
-                "  \"achievements\": [],\n" +
-                "  \"languages\": [],\n" +
+                "  \"certifications\": [\"string1\"],\n" +
+                "  \"achievements\": [\"string1\"],\n" +
+                "  \"languages\": [\"string1\"],\n" +
                 "  \"blogPosts\": [{\"title\":\"\",\"link\":\"\",\"date\":\"\"}],\n" +
-                "  \"hobbies\": [],\n" +
+                "  \"hobbies\": [\"string1\"],\n" +
                 "  \"resumePdfUrl\": \"\"\n" +
                 "}\n\nHTML:\n" + cleanedHtml;
 
