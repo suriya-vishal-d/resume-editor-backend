@@ -159,7 +159,40 @@ public class HtmlReconstructionService {
                 }
             }
 
-            return doc.outerHtml();
+            String finalHtml = doc.outerHtml();
+
+            // ----------------------------------------------------------------
+            // Javascript Data Fallback (for templates using DEFAULT_DATA or similar)
+            // ----------------------------------------------------------------
+            // JSoup only updates HTML DOM. If the template uses JS to render, we must
+            // surgically replace the JS object values using regex.
+            if (resumeData.getProfileImageUrl() != null && !resumeData.getProfileImageUrl().isBlank()) {
+                // Matches: avatar: null, "avatar": "", 'avatar': 'old_url'
+                finalHtml = finalHtml.replaceAll(
+                        "([\"']?avatar[\"']?\\s*:\\s*)(null|[\"'][^\"']*[\"'])",
+                        "$1\"" + resumeData.getProfileImageUrl() + "\""
+                );
+            }
+            if (resumeData.getName() != null) {
+                finalHtml = finalHtml.replaceAll(
+                        "([\"']?name[\"']?\\s*:\\s*)(null|[\"'][^\"']*[\"'])",
+                        "$1\"" + resumeData.getName().replace("\"", "\\\"") + "\""
+                );
+            }
+            if (resumeData.getTagline() != null) {
+                finalHtml = finalHtml.replaceAll(
+                        "([\"']?tagline[\"']?\\s*:\\s*)(null|[\"'][^\"']*[\"'])",
+                        "$1\"" + resumeData.getTagline().replace("\"", "\\\"") + "\""
+                );
+            }
+            if (resumeData.getAbout() != null) {
+                finalHtml = finalHtml.replaceAll(
+                        "([\"']?about[\"']?\\s*:\\s*)(null|[\"'][^\"']*[\"'])",
+                        "$1\"" + resumeData.getAbout().replace("\"", "\\\"") + "\""
+                );
+            }
+
+            return finalHtml;
 
         } catch (Exception e) {
             throw new HtmlReconstructionException("Failed to reconstruct HTML: " + e.getMessage());
