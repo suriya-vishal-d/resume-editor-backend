@@ -1,5 +1,6 @@
 package com.suriya.resume_editor.service;
 
+import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.suriya.resume_editor.model.ResumeData;
@@ -33,6 +34,7 @@ public class HuggingFaceService {
         this.apiKey = apiKey;
         this.model = model;
         this.objectMapper = new ObjectMapper();
+        this.objectMapper.configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
         this.htmlCleaner = htmlCleaner;
     }
 
