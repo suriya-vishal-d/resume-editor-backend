@@ -37,20 +37,18 @@ public class SecurityConfig {
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         http
-            .csrf(AbstractHttpConfigurer::disable)
-            // Still use IF_REQUIRED because OAuth2 login requires session for state management
-            .sessionManagement(session -> session
-                .sessionCreationPolicy(SessionCreationPolicy.IF_REQUIRED)
-            )
-            .authorizeHttpRequests(auth -> auth
-                .requestMatchers("/auth/**", "/oauth2/**").permitAll()
-                .anyRequest().authenticated()
-            )
-            .oauth2Login(oauth2 -> oauth2
-                .loginPage("/auth/login")
-                .defaultSuccessUrl("/auth/success", true)
-            )
-            .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);
+                .csrf(AbstractHttpConfigurer::disable)
+                // Still use IF_REQUIRED because OAuth2 login requires session for state
+                // management
+                .sessionManagement(session -> session
+                        .sessionCreationPolicy(SessionCreationPolicy.IF_REQUIRED))
+                .authorizeHttpRequests(auth -> auth
+                        .requestMatchers("/auth/**", "/oauth2/**").permitAll()
+                        .anyRequest().authenticated())
+                .oauth2Login(oauth2 -> oauth2
+                        .loginPage("/auth/login")
+                        .defaultSuccessUrl("/auth/success", true))
+                .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);
 
         return http.build();
     }
@@ -62,7 +60,7 @@ public class SecurityConfig {
                 .build();
 
         JdkClientHttpRequestFactory factory = new JdkClientHttpRequestFactory(httpClient);
-        // 90-second read timeout — generous enough for the HuggingFace AI call
+        // 90-second read timeout — generous enough for the Cloudflare AI call
         factory.setReadTimeout(Duration.ofSeconds(90));
 
         return RestClient.builder()

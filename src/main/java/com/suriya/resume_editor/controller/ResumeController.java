@@ -9,7 +9,7 @@ import com.suriya.resume_editor.model.ResumeData;
 import com.suriya.resume_editor.model.UpdateRequest;
 import com.suriya.resume_editor.service.GitHubService;
 import com.suriya.resume_editor.service.HtmlReconstructionService;
-import com.suriya.resume_editor.service.HuggingFaceService;
+import com.suriya.resume_editor.service.CloudflareAIService;
 import org.springframework.http.ResponseEntity;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -28,17 +28,17 @@ import java.util.Map;
 public class ResumeController {
 
     private final GitHubService gitHubService;
-    private final HuggingFaceService huggingFaceService;
+    private final CloudflareAIService cloudflareAIService;
     private final HtmlReconstructionService htmlReconstructionService;
     private final com.suriya.resume_editor.service.JwtService jwtService;
     private final ObjectMapper objectMapper;
 
     public ResumeController(GitHubService gitHubService,
-                            HuggingFaceService huggingFaceService,
+                            CloudflareAIService cloudflareAIService,
                             HtmlReconstructionService htmlReconstructionService,
                             com.suriya.resume_editor.service.JwtService jwtService) {
         this.gitHubService = gitHubService;
-        this.huggingFaceService = huggingFaceService;
+        this.cloudflareAIService = cloudflareAIService;
         this.htmlReconstructionService = htmlReconstructionService;
         this.jwtService = jwtService;
         this.objectMapper = new ObjectMapper();
@@ -46,7 +46,7 @@ public class ResumeController {
 
     /**
      * POST /resume/parse
-     * Fetches index.html from the given GitHub repo, sends it to HuggingFace AI,
+     * Fetches index.html from the given GitHub repo, sends it to Cloudflare Workers AI (GLM-5.2),
      * and returns the structured ResumeData alongside the sha and originalHtml
      * that the Android app must echo back in the update request.
      *
@@ -72,8 +72,8 @@ public class ResumeController {
         String rawHtml = gitHubFile.getContent();
         String sha     = gitHubFile.getSha();
 
-        // 2. Send HTML to AI and get back structured data
-        ResumeData resumeData = huggingFaceService.parseHtml(rawHtml);
+        // 2. Send HTML to Cloudflare Workers AI and get back structured data
+        ResumeData resumeData = cloudflareAIService.parseHtml(rawHtml);
 
         // 3. Return all three — Android must store sha and originalHtml
         //    and send them back in the update request

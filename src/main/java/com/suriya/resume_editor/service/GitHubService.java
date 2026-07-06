@@ -29,8 +29,8 @@ public class GitHubService {
     /**
      * Fetches index.html from the given GitHub repo.
      * Returns a GitHubFile with:
-     *  - content: the decoded (plain) HTML string
-     *  - sha:     the blob SHA required for committing back
+     * - content: the decoded (plain) HTML string
+     * - sha: the blob SHA required for committing back
      */
     public GitHubFile fetchPortfolioHtml(String owner, String repo, String filePath, String token) {
         String url = GITHUB_API_BASE + "/repos/" + owner + "/" + repo + "/contents/" + filePath;
@@ -46,7 +46,7 @@ public class GitHubService {
         } catch (HttpClientErrorException.NotFound e) {
             throw new RepoNotFoundException(
                     "'" + filePath + "' not found in repository '" + owner + "/" + repo + "'. " +
-                    "Make sure the file exists and the path is correct.");
+                            "Make sure the file exists and the path is correct.");
         } catch (HttpClientErrorException.Unauthorized e) {
             throw new GitHubCommitException(
                     "GitHub token is invalid or expired. Please re-authenticate.");
@@ -91,8 +91,9 @@ public class GitHubService {
      * The Blobs API has no such restriction and always returns the full file.
      *
      * Steps:
-     *  1. GET /repos/{owner}/{repo}/git/trees/HEAD?recursive=1  → find the blob SHA for filePath
-     *  2. GET /repos/{owner}/{repo}/git/blobs/{blobSha}          → fetch full base64 content
+     * 1. GET /repos/{owner}/{repo}/git/trees/HEAD?recursive=1 → find the blob SHA
+     * for filePath
+     * 2. GET /repos/{owner}/{repo}/git/blobs/{blobSha} → fetch full base64 content
      */
     private GitHubFile fetchPortfolioHtmlViaBlobs(String owner, String repo, String filePath, String token) {
         // Step 1: Resolve blob SHA from the tree
@@ -132,7 +133,7 @@ public class GitHubService {
         if (blobSha == null) {
             throw new RepoNotFoundException(
                     "'" + filePath + "' not found in repository '" + owner + "/" + repo + "'. "
-                    + "Make sure the file exists and the path is correct.");
+                            + "Make sure the file exists and the path is correct.");
         }
 
         // Step 2: Fetch the blob content
@@ -175,7 +176,8 @@ public class GitHubService {
     }
 
     /**
-     * Fetches only the SHA of a file from the Contents API (needed for committing back).
+     * Fetches only the SHA of a file from the Contents API (needed for committing
+     * back).
      * Falls back to the blob SHA if the Contents API is unavailable.
      */
     private String resolveContentsSha(String owner, String repo, String filePath, String token, String fallbackSha) {
@@ -203,7 +205,7 @@ public class GitHubService {
      *            this to prevent conflicts (acts like an optimistic lock).
      */
     public String commitPortfolioHtml(String owner, String repo, String token,
-                                      String sha, String updatedHtml, String filePath) {
+            String sha, String updatedHtml, String filePath) {
 
         String url = GITHUB_API_BASE + "/repos/" + owner + "/" + repo + "/contents/" + filePath;
 
@@ -221,8 +223,7 @@ public class GitHubService {
         Map<String, String> requestBody = Map.of(
                 "message", "Updated portfolio via Portfolio Editor app",
                 "content", encodedContent,
-                "sha", sha
-        );
+                "sha", sha);
 
         try {
             return restClient.put()
@@ -236,14 +237,14 @@ public class GitHubService {
         } catch (HttpClientErrorException.NotFound e) {
             throw new RepoNotFoundException(
                     "Cannot commit — '" + filePath + "' not found in repository '" + owner + "/" + repo + "'. " +
-                    "This often happens if your GitHub token lacks 'repo' (write) scope.");
+                            "This often happens if your GitHub token lacks 'repo' (write) scope.");
         } catch (HttpClientErrorException.Unauthorized e) {
             throw new GitHubCommitException(
                     "GitHub token is invalid or expired. Please re-authenticate.");
         } catch (HttpClientErrorException.Conflict e) {
             throw new GitHubCommitException(
                     "Commit conflict: the file was modified on GitHub since it was last fetched. " +
-                    "Please fetch the latest version and try again.");
+                            "Please fetch the latest version and try again.");
         } catch (HttpClientErrorException.Forbidden e) {
             throw new GitHubCommitException(
                     "Permission denied: ensure your GitHub token has 'repo' scope and you have write access to this repository.");
@@ -254,8 +255,10 @@ public class GitHubService {
     }
 
     /**
-     * Checks if a file exists in the repo and returns its sha, or null if it doesn't exist.
-     * Used before uploading an image to know whether to include a sha in the PUT body.
+     * Checks if a file exists in the repo and returns its sha, or null if it
+     * doesn't exist.
+     * Used before uploading an image to know whether to include a sha in the PUT
+     * body.
      *
      * @param filePath path relative to repo root, e.g. "images/profile.jpg"
      * @return the blob sha string if the file exists, or null if it returns 404
@@ -287,18 +290,20 @@ public class GitHubService {
      * If the file already exists, its sha is fetched first and included in the PUT
      * body so GitHub replaces it cleanly instead of returning a 422 conflict.
      *
-     * @param imageName  filename to use inside the images/ directory, e.g. "profile.jpg"
+     * @param imageName  filename to use inside the images/ directory, e.g.
+     *                   "profile.jpg"
      * @param imageBytes raw bytes of the image (pre-compressed by the Android app)
      * @return the public GitHub Pages URL for the uploaded image,
      *         e.g. "https://{owner}.github.io/{repo}/images/profile.jpg"
      */
     public String uploadProfileImage(String owner, String repo, String token,
-                                     String imageName, byte[] imageBytes) {
+            String imageName, byte[] imageBytes) {
 
         String filePath = "images/" + imageName;
         String url = GITHUB_API_BASE + "/repos/" + owner + "/" + repo + "/contents/" + filePath;
 
-        // Base64-encode the raw image bytes — no line breaks, GitHub requires clean base64
+        // Base64-encode the raw image bytes — no line breaks, GitHub requires clean
+        // base64
         String encodedContent = Base64.getEncoder().encodeToString(imageBytes);
 
         // Check whether the file already exists; include sha in the body if so
@@ -365,8 +370,7 @@ public class GitHubService {
                 return Map.of(
                         "stars", response.path("stargazers_count").asInt(0),
                         "watchers", response.path("subscribers_count").asInt(0),
-                        "forks", response.path("forks_count").asInt(0)
-                );
+                        "forks", response.path("forks_count").asInt(0));
             }
         } catch (Exception e) {
             System.err.println("Failed to fetch repo stats: " + e.getMessage());

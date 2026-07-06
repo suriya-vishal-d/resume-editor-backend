@@ -22,11 +22,11 @@ public class GlobalExceptionHandler {
         return new ResponseEntity<>(errorResponse, HttpStatus.NOT_FOUND);
     }
 
-    @ExceptionHandler(HuggingFaceException.class)
-    public ResponseEntity<ErrorResponse> handleHuggingFaceException(HuggingFaceException ex) {
+    @ExceptionHandler(CloudflareAIException.class)
+    public ResponseEntity<ErrorResponse> handleCloudflareAIException(CloudflareAIException ex) {
         ErrorResponse errorResponse = ErrorResponse.builder()
                 .status(HttpStatus.BAD_GATEWAY.value())
-                .error("HuggingFace API Error")
+                .error("Cloudflare Workers AI Error")
                 .message(ex.getMessage())
                 .timestamp(LocalDateTime.now())
                 .build();
