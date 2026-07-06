@@ -58,14 +58,15 @@ public class CloudflareAIService {
 
         String userPrompt = "Parse this HTML and extract all available details into this exact JSON structure. " +
                 "If a field is not found in the HTML tags, carefully check any inline <script> tags for JavaScript arrays/objects containing the data. " +
-                "IMPORTANT: If data (like skills, certifications) is grouped or represented as objects, you MUST flatten it into a simple list of strings. " +
+                "IMPORTANT: Group skills into appropriate categories (e.g., 'Languages', 'Frameworks', 'Tools', or 'General'). If they are already grouped in the source, preserve those groups. " +
+                "IMPORTANT: If other data (like certifications) is grouped or represented as objects, you MUST flatten it into a simple list of strings. " +
                 "If a field is truly not found anywhere, leave it null or empty list:\n" +
                 "{\n" +
                 "  \"name\": \"\",\n" +
                 "  \"tagline\": \"\",\n" +
                 "  \"about\": \"\",\n" +
                 "  \"profileImageUrl\": \"\",\n" +
-                "  \"skills\": [\"string1\", \"string2\"],\n" +
+                "  \"skills\": [{\"category\":\"Languages\", \"items\":[\"Java\", \"Python\"]}],\n" +
                 "  \"projects\": [{\"title\":\"\",\"description\":\"\",\"techStack\":[],\"link\":\"\"}],\n" +
                 "  \"experience\": [{\"company\":\"\",\"role\":\"\",\"startDate\":\"\",\"endDate\":\"\"}],\n" +
                 "  \"education\": [{\"institution\":\"\",\"degree\":\"\",\"field\":\"\",\"startYear\":\"\",\"endYear\":\"\",\"grade\":\"\"}],\n" +

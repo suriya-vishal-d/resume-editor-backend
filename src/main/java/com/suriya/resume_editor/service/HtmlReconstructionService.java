@@ -74,8 +74,16 @@ public class HtmlReconstructionService {
                         ".skills, #skills, [class*=skills]").first();
                 if (skillsSection != null) {
                     var skillItems = skillsSection.select("li, span, .skill-item, [class*=skill-item]");
-                    for (int i = 0; i < Math.min(skillItems.size(), resumeData.getSkills().size()); i++) {
-                        skillItems.get(i).text(resumeData.getSkills().get(i));
+                    
+                    java.util.List<String> flatSkills = new java.util.ArrayList<>();
+                    for (com.suriya.resume_editor.model.SkillGroup group : resumeData.getSkills()) {
+                        if (group.getItems() != null) {
+                            flatSkills.addAll(group.getItems());
+                        }
+                    }
+                    
+                    for (int i = 0; i < Math.min(skillItems.size(), flatSkills.size()); i++) {
+                        skillItems.get(i).text(flatSkills.get(i));
                     }
                 }
             }

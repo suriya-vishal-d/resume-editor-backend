@@ -9,7 +9,7 @@ public class ResumeData {
     private String tagline;
     private String about;
     private String profileImageUrl;
-    private List<String> skills;
+    private List<SkillGroup> skills;
     private List<Project> projects;
     private List<Experience> experience;
     private List<Education> education;
