@@ -86,8 +86,10 @@ public class CloudflareAIService {
                 )
         );
 
-        // Build the endpoint URL dynamically from accountId and model
-        String endpoint = "https://api.cloudflare.com/client/v4/accounts/" + accountId + "/ai/run/" + model;
+        // Build the endpoint URL dynamically from accountId and model (stripping accidental quotes/spaces)
+        String cleanAccountId = accountId.trim().replace("\"", "");
+        String cleanModel = model.trim().replace("\"", "");
+        String endpoint = "https://api.cloudflare.com/client/v4/accounts/" + cleanAccountId + "/ai/run/" + cleanModel;
 
         String rawResponse;
         try {
