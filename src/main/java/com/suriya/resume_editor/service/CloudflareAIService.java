@@ -132,16 +132,28 @@ public class CloudflareAIService {
     private String extractContentFromResponse(String rawResponse) {
         try {
             JsonNode root = objectMapper.readTree(rawResponse);
-            JsonNode content = root
-                    .path("result")
-                    .path("response");
+            JsonNode result = root.path("result");
 
-            if (content.isMissingNode() || content.isNull()) {
-                throw new CloudflareAIException(
-                        "Cloudflare AI response was missing 'result.response'. " +
-                        "Raw response: " + rawResponse);
+            // GLM-5.2 and other OpenAI-compatible models return:
+            // { "result": { "choices": [{ "message": { "content": "..." } }] } }
+            JsonNode choices = result.path("choices");
+            if (!choices.isMissingNode() && choices.isArray() && choices.size() > 0) {
+                JsonNode content = choices.get(0).path("message").path("content");
+                if (!content.isMissingNode() && !content.isNull()) {
+                    return content.asText();
+                }
             }
-            return content.asText();
+
+            // Legacy Cloudflare models (e.g. Llama 3) return:
+            // { "result": { "response": "..." } }
+            JsonNode legacyContent = result.path("response");
+            if (!legacyContent.isMissingNode() && !legacyContent.isNull()) {
+                return legacyContent.asText();
+            }
+
+            throw new CloudflareAIException(
+                    "Cloudflare AI response was missing both 'result.choices[0].message.content' " +
+                    "and 'result.response'. Raw response: " + rawResponse);
         } catch (CloudflareAIException e) {
             throw e;
         } catch (Exception e) {
