@@ -27,7 +27,7 @@ public class CloudflareAIService {
     public CloudflareAIService(RestClient restClient,
                                @Value("${cloudflare.account.id}") String accountId,
                                @Value("${cloudflare.api.token}") String apiToken,
-                               @Value("${cloudflare.model}") String model,
+                               @Value("${cloudflare.model:@cf/zai-org/glm-4.7-flash}") String model,
                                HtmlCleanerService htmlCleaner) {
         this.restClient = restClient;
         this.accountId = accountId;
@@ -39,7 +39,7 @@ public class CloudflareAIService {
     }
 
     /**
-     * Sends raw HTML to Cloudflare Workers AI (GLM-5.2) and parses the AI response into a ResumeData object.
+     * Sends raw HTML to Cloudflare Workers AI (GLM-4.7-Flash) and parses the AI response into a ResumeData object.
      *
      * @param rawHtml the decoded HTML string fetched from GitHub
      * @return ResumeData populated with all fields the AI could extract
@@ -135,7 +135,7 @@ public class CloudflareAIService {
             JsonNode root = objectMapper.readTree(rawResponse);
             JsonNode result = root.path("result");
 
-            // GLM-5.2 and other OpenAI-compatible models return:
+            // GLM-4.7-Flash and other OpenAI-compatible models return:
             // { "result": { "choices": [{ "message": { "content": "..." } }] } }
             JsonNode choices = result.path("choices");
             if (!choices.isMissingNode() && choices.isArray() && choices.size() > 0) {

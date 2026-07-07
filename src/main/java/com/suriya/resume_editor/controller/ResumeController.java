@@ -46,7 +46,7 @@ public class ResumeController {
 
     /**
      * POST /resume/parse
-     * Fetches index.html from the given GitHub repo, sends it to Cloudflare Workers AI (GLM-5.2),
+     * Fetches index.html from the given GitHub repo, sends it to Cloudflare Workers AI (GLM-4.7-Flash),
      * and returns the structured ResumeData alongside the sha and originalHtml
      * that the Android app must echo back in the update request.
      *
