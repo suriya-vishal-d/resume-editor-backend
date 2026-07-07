@@ -66,24 +66,26 @@ public class HtmlReconstructionService {
             }
 
             // ----------------------------------------------------------------
-            // Skills — update text of existing <li> elements inside the skills
-            // section; never add or remove items
+            // Skills (static-HTML path) — only runs when the skills section
+            // already contains <li>/<span> elements in the DOM.  JS-driven
+            // templates (empty shell + DEFAULT_DATA script) are handled by
+            // replaceJsSkillsArray() after outerHtml() below.
             // ----------------------------------------------------------------
             if (resumeData.getSkills() != null && !resumeData.getSkills().isEmpty()) {
                 Element skillsSection = doc.select(
                         ".skills, #skills, [class*=skills]").first();
                 if (skillsSection != null) {
                     var skillItems = skillsSection.select("li, span, .skill-item, [class*=skill-item]");
-                    
-                    java.util.List<String> flatSkills = new java.util.ArrayList<>();
-                    for (com.suriya.resume_editor.model.SkillGroup group : resumeData.getSkills()) {
-                        if (group.getItems() != null) {
-                            flatSkills.addAll(group.getItems());
+                    // Only proceed if there are actual pre-rendered skill elements to overwrite.
+                    // An empty container means this is a JS-driven template — skip DOM rewrite.
+                    if (!skillItems.isEmpty()) {
+                        java.util.List<String> flatSkills = new java.util.ArrayList<>();
+                        for (com.suriya.resume_editor.model.SkillGroup group : resumeData.getSkills()) {
+                            if (group.getItems() != null) flatSkills.addAll(group.getItems());
                         }
-                    }
-                    
-                    for (int i = 0; i < Math.min(skillItems.size(), flatSkills.size()); i++) {
-                        skillItems.get(i).text(flatSkills.get(i));
+                        for (int i = 0; i < Math.min(skillItems.size(), flatSkills.size()); i++) {
+                            skillItems.get(i).text(flatSkills.get(i));
+                        }
                     }
                 }
             }
@@ -170,10 +172,17 @@ public class HtmlReconstructionService {
             String finalHtml = doc.outerHtml();
 
             // ----------------------------------------------------------------
-            // Javascript Data Fallback (for templates using DEFAULT_DATA or similar)
+            // JavaScript Data Layer — for templates that store ALL data inside
+            // an inline <script> (e.g. DEFAULT_DATA / pf_data / similar)
             // ----------------------------------------------------------------
-            // JSoup only updates HTML DOM. If the template uses JS to render, we must
-            // surgically replace the JS object values using regex.
+
+            // Skills — replaces the entire skills:[...] array in the JS object.
+            // This correctly handles added/removed skills and category changes.
+            if (resumeData.getSkills() != null && !resumeData.getSkills().isEmpty()) {
+                finalHtml = replaceJsSkillsArray(finalHtml, resumeData.getSkills());
+            }
+
+            // Scalar fields — single-line regex replacement (avatar, name, tagline, about)
             if (resumeData.getProfileImageUrl() != null && !resumeData.getProfileImageUrl().isBlank()) {
                 // Matches: avatar: null, "avatar": "", 'avatar': 'old_url'
                 finalHtml = finalHtml.replaceAll(
@@ -229,5 +238,126 @@ public class HtmlReconstructionService {
         if (value == null || value.isBlank()) return;
         Element el = doc.select(cssSelector).first();
         if (el != null) el.attr(attrName, value);
+    }
+
+    // -------------------------------------------------------------------------
+    // JS data-layer helpers — for templates that store data in inline <script>
+    // -------------------------------------------------------------------------
+
+    /**
+     * Finds the {@code skills:[...]} array inside any inline {@code <script>} block
+     * and replaces it with the serialized {@code skills} list.
+     *
+     * <p>Uses bracket-depth counting instead of regex to handle multi-line arrays
+     * and nested {@code items:[...]} arrays without false positives.
+     *
+     * <p>Detects whether the template uses {@code group} or {@code category} as
+     * the object key name and preserves that convention in the output.
+     *
+     * <p>If no {@code skills:} key is found in the HTML the original string is
+     * returned unchanged (static-HTML templates are unaffected).
+     */
+    private String replaceJsSkillsArray(
+            String html, java.util.List<com.suriya.resume_editor.model.SkillGroup> skills) {
+
+        // Match: skills:[ or "skills":[ or 'skills':[ with optional whitespace/newlines
+        java.util.regex.Pattern startPattern = java.util.regex.Pattern.compile(
+                "[\"']?skills[\"']?\\s*:\\s*\\[",
+                java.util.regex.Pattern.CASE_INSENSITIVE
+        );
+        java.util.regex.Matcher m = startPattern.matcher(html);
+        if (!m.find()) {
+            // No inline JS skills array — nothing to replace
+            return html;
+        }
+
+        // arrayStart = index of the opening '['
+        int arrayStart = m.end() - 1;
+
+        // Walk forward counting bracket depth to find the matching ']'
+        int depth = 0;
+        int arrayEnd = -1;
+        boolean inString = false;
+        char stringChar = 0;
+        for (int i = arrayStart; i < html.length(); i++) {
+            char c = html.charAt(i);
+            // Track string boundaries so brackets inside strings are ignored
+            if (!inString && (c == '"' || c == '\'')) {
+                inString = true;
+                stringChar = c;
+            } else if (inString && c == stringChar && (i == 0 || html.charAt(i - 1) != '\\')) {
+                inString = false;
+            } else if (!inString) {
+                if (c == '[') depth++;
+                else if (c == ']') {
+                    depth--;
+                    if (depth == 0) {
+                        arrayEnd = i + 1; // position after the closing ']'
+                        break;
+                    }
+                }
+            }
+        }
+        if (arrayEnd == -1) {
+            // Malformed JS — leave unchanged rather than corrupting the file
+            System.err.println("WARN: replaceJsSkillsArray — could not find closing ']' for skills array; skipping.");
+            return html;
+        }
+
+        // Detect the key name used in the original template ("group" vs "category")
+        String originalArray = html.substring(arrayStart, arrayEnd);
+        String groupKey = originalArray.contains("\"group\"") || originalArray.contains("group:")
+                ? "group" : "category";
+
+        // Build the replacement array string
+        String newArray = buildSkillsJsArray(skills, groupKey);
+
+        // Splice: everything before '[' + new array + everything after old ']'
+        return html.substring(0, arrayStart) + newArray + html.substring(arrayEnd);
+    }
+
+    /**
+     * Serialises a {@code List<SkillGroup>} into a compact JS/JSON array string
+     * using the given {@code groupKey} ({@code "group"} or {@code "category"}).
+     *
+     * <p>Output is valid JSON, which is also valid JavaScript, so it is safe to
+     * embed inside any inline {@code <script>} block.
+     */
+    private String buildSkillsJsArray(
+            java.util.List<com.suriya.resume_editor.model.SkillGroup> skills,
+            String groupKey) {
+
+        StringBuilder sb = new StringBuilder("[");
+        for (int i = 0; i < skills.size(); i++) {
+            com.suriya.resume_editor.model.SkillGroup g = skills.get(i);
+            if (i > 0) sb.append(",");
+            sb.append("{\"")
+              .append(groupKey)
+              .append("\":\"")
+              .append(escapeJs(g.getCategory() != null ? g.getCategory() : "General"))
+              .append("\",\"items\":");
+
+            java.util.List<String> items = g.getItems() != null ? g.getItems() : java.util.List.of();
+            sb.append("[");
+            for (int j = 0; j < items.size(); j++) {
+                if (j > 0) sb.append(",");
+                sb.append("\"").append(escapeJs(items.get(j))).append("\"");
+            }
+            sb.append("]}");
+        }
+        sb.append("]");
+        return sb.toString();
+    }
+
+    /**
+     * Escapes a string value for safe embedding inside a JS double-quoted string.
+     */
+    private String escapeJs(String value) {
+        if (value == null) return "";
+        return value
+                .replace("\\", "\\\\")   // backslash first
+                .replace("\"", "\\\"")   // double-quote
+                .replace("\n", "\\n")    // newline
+                .replace("\r", "");      // carriage return
     }
 }

@@ -82,6 +82,29 @@ public class ResumeController {
     }
 
     /**
+     * POST /resume/fetch
+     * Fetches index.html from the given GitHub repo without sending it to AI.
+     * This is a fast check to verify the file exists during initial setup.
+     */
+    @PostMapping("/fetch")
+    public ResponseEntity<?> fetch(@RequestBody ParseRequest request,
+                                   HttpServletRequest httpRequest) {
+
+        String token = resolveGitHubToken(httpRequest);
+
+        String filePath = (request.getFilePath() != null && !request.getFilePath().isBlank())
+                ? request.getFilePath().replaceAll("^/+", "") // strip leading slashes
+                : "index.html";
+        String repoName = (request.getRepo() != null) ? request.getRepo().replaceAll("[/.]+$", "") : "";
+        
+        // This will throw if not found, automatically handled by global exception handler
+        GitHubFile gitHubFile = gitHubService.fetchPortfolioHtml(
+                request.getOwner(), repoName, filePath, token);
+
+        return ResponseEntity.ok(Map.of("message", "Portfolio found successfully", "sha", gitHubFile.getSha()));
+    }
+
+    /**
      * POST /resume/update
      * Takes the edited ResumeData, reconstructs the HTML using the original as a
      * template, then commits the updated file back to GitHub.
