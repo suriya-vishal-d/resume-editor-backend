@@ -182,31 +182,19 @@ public class HtmlReconstructionService {
                 finalHtml = replaceJsSkillsArray(finalHtml, resumeData.getSkills());
             }
 
-            // Scalar fields — single-line regex replacement (avatar, name, tagline, about)
+            // Scalar JS fields — use safe string-boundary parser instead of
+            // naive [^"']* regex, which breaks on apostrophes (e.g. "I'm")
             if (resumeData.getProfileImageUrl() != null && !resumeData.getProfileImageUrl().isBlank()) {
-                // Matches: avatar: null, "avatar": "", 'avatar': 'old_url'
-                finalHtml = finalHtml.replaceAll(
-                        "([\"']?avatar[\"']?\\s*:\\s*)(null|[\"'][^\"']*[\"'])",
-                        "$1\"" + resumeData.getProfileImageUrl() + "\""
-                );
+                finalHtml = replaceJsScalarField(finalHtml, "avatar", resumeData.getProfileImageUrl());
             }
-            if (resumeData.getName() != null) {
-                finalHtml = finalHtml.replaceAll(
-                        "([\"']?name[\"']?\\s*:\\s*)(null|[\"'][^\"']*[\"'])",
-                        "$1\"" + resumeData.getName().replace("\"", "\\\"") + "\""
-                );
+            if (resumeData.getName() != null && !resumeData.getName().isBlank()) {
+                finalHtml = replaceJsScalarField(finalHtml, "name", resumeData.getName());
             }
-            if (resumeData.getTagline() != null) {
-                finalHtml = finalHtml.replaceAll(
-                        "([\"']?tagline[\"']?\\s*:\\s*)(null|[\"'][^\"']*[\"'])",
-                        "$1\"" + resumeData.getTagline().replace("\"", "\\\"") + "\""
-                );
+            if (resumeData.getTagline() != null && !resumeData.getTagline().isBlank()) {
+                finalHtml = replaceJsScalarField(finalHtml, "tagline", resumeData.getTagline());
             }
-            if (resumeData.getAbout() != null) {
-                finalHtml = finalHtml.replaceAll(
-                        "([\"']?about[\"']?\\s*:\\s*)(null|[\"'][^\"']*[\"'])",
-                        "$1\"" + resumeData.getAbout().replace("\"", "\\\"") + "\""
-                );
+            if (resumeData.getAbout() != null && !resumeData.getAbout().isBlank()) {
+                finalHtml = replaceJsScalarField(finalHtml, "about", resumeData.getAbout());
             }
 
             return finalHtml;
@@ -238,6 +226,59 @@ public class HtmlReconstructionService {
         if (value == null || value.isBlank()) return;
         Element el = doc.select(cssSelector).first();
         if (el != null) el.attr(attrName, value);
+    }
+
+    /**
+     * Safely replaces a JS scalar string field (e.g. about:"...") in an inline
+     * script block. Unlike a simple regex, this walks the string character by
+     * character to find the exact quote boundaries, so apostrophes inside the
+     * VALUE ("I'm a developer") never confuse the parser.
+     *
+     * Handles all three forms:
+     *   fieldName: "old value"
+     *   "fieldName": "old value"
+     *   fieldName: null
+     */
+    private String replaceJsScalarField(String html, String fieldName, String newValue) {
+        // Build a pattern that matches the key + colon + optional whitespace
+        // then either null or an opening quote (" or ')
+        java.util.regex.Pattern keyPattern = java.util.regex.Pattern.compile(
+                "[\"']?" + java.util.regex.Pattern.quote(fieldName) + "[\"']?\\s*:\\s*"
+        );
+        java.util.regex.Matcher m = keyPattern.matcher(html);
+        if (!m.find()) return html; // field not present — leave unchanged
+
+        int afterColon = m.end(); // index right after the colon+whitespace
+
+        // Handle null literal
+        if (html.startsWith("null", afterColon)) {
+            String escaped = escapeJs(newValue);
+            return html.substring(0, afterColon) + "\"" + escaped + "\"" + html.substring(afterColon + 4);
+        }
+
+        // Must start with a quote character
+        if (afterColon >= html.length()) return html;
+        char openQuote = html.charAt(afterColon);
+        if (openQuote != '"' && openQuote != '\'') return html;
+
+        // Walk forward from the character after the opening quote to find closing quote,
+        // skipping over backslash-escaped characters
+        int valueStart = afterColon + 1;
+        int valueEnd = -1;
+        for (int i = valueStart; i < html.length(); i++) {
+            char c = html.charAt(i);
+            if (c == '\\') {
+                i++; // skip escaped character
+            } else if (c == openQuote) {
+                valueEnd = i; // found closing quote
+                break;
+            }
+        }
+        if (valueEnd == -1) return html; // malformed — leave unchanged
+
+        // Splice: key + opening quote + escaped new value + closing quote + rest
+        String escaped = escapeJs(newValue);
+        return html.substring(0, valueStart) + escaped + html.substring(valueEnd);
     }
 
     // -------------------------------------------------------------------------
