@@ -14,7 +14,7 @@ import org.springframework.web.client.RestClient;
 import java.util.List;
 import java.util.Map;
 
-@Service
+// @Service // Commented out to prevent Spring Boot from instantiating this legacy service
 public class CloudflareAIService {
 
     private final RestClient restClient;
