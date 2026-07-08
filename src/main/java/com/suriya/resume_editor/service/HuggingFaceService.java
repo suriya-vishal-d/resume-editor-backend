@@ -27,8 +27,8 @@ public class HuggingFaceService {
     private final HtmlCleanerService htmlCleaner;
 
     public HuggingFaceService(RestClient restClient,
-                               @Value("${huggingface.api.key}") String apiKey,
-                               @Value("${huggingface.model:meta-llama/Llama-3.1-8B-Instruct}") String model,
+                               @Value("${huggingface.api.key:${HF_API_KEY:}}") String apiKey,
+                               @Value("${huggingface.model:${HF_MODEL:meta-llama/Llama-3.1-8B-Instruct}}") String model,
                                HtmlCleanerService htmlCleaner) {
         this.restClient = restClient;
         this.apiKey = apiKey;
