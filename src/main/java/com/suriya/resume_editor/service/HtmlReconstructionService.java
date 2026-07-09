@@ -38,12 +38,19 @@ public class HtmlReconstructionService {
             // Profile Photo
             // ----------------------------------------------------------------
             if (resumeData.getProfileImageUrl() != null && !resumeData.getProfileImageUrl().isBlank()) {
-                Element imgEl = doc.select("img.profile-photo, img.avatar, img.profile-img, img#profile-photo, img#avatar").first();
-                if (imgEl == null) {
-                    imgEl = doc.select("img").first();
-                }
-                if (imgEl != null) {
+                Element initialsDiv = doc.select("div.avatar-initials, #avatar-initials").first();
+                if (initialsDiv != null) {
+                    // Replace the initials div with an img tag
+                    Element imgEl = doc.createElement("img");
+                    imgEl.addClass("avatar-img");
                     imgEl.attr("src", resumeData.getProfileImageUrl());
+                    imgEl.attr("alt", "Profile Picture");
+                    initialsDiv.replaceWith(imgEl);
+                } else {
+                    Element imgEl = doc.select("img.profile-photo, img.avatar, img.profile-img, img.avatar-img, #profile-photo, #avatar").first();
+                    if (imgEl != null) {
+                        imgEl.attr("src", resumeData.getProfileImageUrl());
+                    }
                 }
             }
 
