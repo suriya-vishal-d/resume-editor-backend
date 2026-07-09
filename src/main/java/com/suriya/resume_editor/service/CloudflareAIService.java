@@ -58,6 +58,7 @@ public class CloudflareAIService {
 
         String userPrompt = "Parse this HTML and extract all available details into this exact JSON structure. " +
                 "If a field is not found in the HTML tags, carefully check any inline <script> tags for JavaScript arrays/objects containing the data. " +
+                "IMPORTANT: Profile photos may appear as <img src> OR as CSS background-image on <div> elements (inline style or <style> blocks). Extract the image URL into profileImageUrl for both cases.\n" +
                 "IMPORTANT: Group skills into appropriate categories (e.g., 'Languages', 'Frameworks', 'Tools', or 'General'). If they are already grouped in the source, preserve those groups. " +
                 "IMPORTANT: If other data (like certifications) is grouped or represented as objects, you MUST flatten it into a simple list of strings. " +
                 "If a field is truly not found anywhere, leave it null or empty list:\n" +

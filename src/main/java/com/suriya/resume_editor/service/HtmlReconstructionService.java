@@ -35,6 +35,13 @@ public class HtmlReconstructionService {
                     resumeData.getAbout());
 
             // ----------------------------------------------------------------
+            // Profile image — <img src> and CSS background-image on divs
+            // ----------------------------------------------------------------
+            if (resumeData.getProfileImageUrl() != null && !resumeData.getProfileImageUrl().isBlank()) {
+                updateProfileImage(doc, resumeData.getProfileImageUrl());
+            }
+
+            // ----------------------------------------------------------------
             // Contact links — update href only, preserve link display text
             // ----------------------------------------------------------------
             if (resumeData.getContact() != null) {
@@ -213,6 +220,82 @@ public class HtmlReconstructionService {
         if (value == null || value.isBlank()) return;
         Element el = doc.select(cssSelector).first();
         if (el != null) el.attr(attrName, value);
+    }
+
+    /**
+     * Updates profile photos rendered as {@code <img src>} or as CSS
+     * {@code background-image} on profile-like {@code <div>} elements.
+     */
+    private void updateProfileImage(Document doc, String profileImageUrl) {
+        String relativeUrl = PortfolioImageUtils.toRelativeImagePath(profileImageUrl);
+
+        String profileSelector = ".avatar, .profile, .profile-photo, .profile-pic, .profile-img, "
+                + "[class*=avatar], [class*=profile], [class*=headshot], [class*=photo], "
+                + "#avatar, #profile, #profile-photo";
+
+        for (Element img : doc.select(
+                "img.avatar, img.profile, img[class*=avatar], img[class*=profile], "
+                        + "img[id*=avatar], img[id*=profile], .avatar img, .profile img, "
+                        + "#avatar img, #profile img")) {
+            img.attr("src", relativeUrl);
+        }
+
+        boolean updatedBackground = false;
+        for (Element el : doc.select(profileSelector)) {
+            String style = el.attr("style");
+            if (PortfolioImageUtils.extractBackgroundImageUrl(style) != null) {
+                el.attr("style", PortfolioImageUtils.replaceBackgroundImageUrl(style, relativeUrl));
+                updatedBackground = true;
+            }
+        }
+
+        if (!updatedBackground) {
+            for (Element el : doc.select("[style*=background-image]")) {
+                String style = el.attr("style");
+                String currentPath = PortfolioImageUtils.extractBackgroundImageUrl(style);
+                if (currentPath != null && looksLikePhotoPath(currentPath)) {
+                    el.attr("style", PortfolioImageUtils.replaceBackgroundImageUrl(style, relativeUrl));
+                    break;
+                }
+            }
+        }
+
+        for (Element styleEl : doc.select("style")) {
+            styleEl.html(updateProfileBackgroundInCss(styleEl.html(), relativeUrl));
+        }
+    }
+
+    private boolean looksLikePhotoPath(String path) {
+        return path.matches("(?i).*\\.(jpg|jpeg|png|webp|gif|avif)$");
+    }
+
+    private String updateProfileBackgroundInCss(String css, String newUrl) {
+        java.util.regex.Pattern rulePattern = java.util.regex.Pattern.compile(
+                "([^{}]*(?:avatar|profile|photo|headshot|picture|pfp|hero[-_]?image)[^{}]*)\\{([^}]*)\\}",
+                java.util.regex.Pattern.CASE_INSENSITIVE | java.util.regex.Pattern.DOTALL);
+        java.util.regex.Matcher matcher = rulePattern.matcher(css);
+        StringBuffer result = new StringBuffer();
+        boolean changed = false;
+
+        while (matcher.find()) {
+            String selector = matcher.group(1);
+            String body = matcher.group(2);
+            if (body.contains("background-image")) {
+                body = java.util.regex.Pattern.compile(
+                        "background-image\\s*:\\s*url\\(\\s*['\"]?[^)'\"\\s]+['\"]?\\s*\\)",
+                        java.util.regex.Pattern.CASE_INSENSITIVE)
+                        .matcher(body)
+                        .replaceFirst("background-image: url('" + java.util.regex.Matcher.quoteReplacement(newUrl) + "')");
+                changed = true;
+            }
+            matcher.appendReplacement(result, java.util.regex.Matcher.quoteReplacement(selector + "{" + body + "}"));
+        }
+
+        if (!changed) {
+            return css;
+        }
+        matcher.appendTail(result);
+        return result.toString();
     }
 
     /**

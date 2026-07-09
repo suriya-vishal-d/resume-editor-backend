@@ -23,6 +23,7 @@ import org.springframework.stereotype.Service;
  * What stays:
  *  - All text content (headings, paragraphs, lists, anchor text)
  *  - href / src attributes on <a> and <img> tags (links and image URLs matter)
+ *  - background-image URLs from inline style attributes and embedded CSS
  *  - The structural tags (<section>, <article>, <div>, <ul>, <li>, …)
  *
  * Typical reduction: 200-500 KB → 5-30 KB, making the AI call
@@ -33,7 +34,7 @@ public class HtmlCleanerService {
 
     // Attributes that carry zero meaning for data-extraction but can be very verbose
     private static final String[] NOISE_ATTRIBUTES = {
-            "class", "id", "style",
+            "class", "id",
             "tabindex", "role", "aria-label", "aria-hidden", "aria-expanded",
             "aria-controls", "aria-describedby", "aria-labelledby",
             "data-aos", "data-wow-duration", "data-wow-delay", "data-wow-offset",
@@ -55,7 +56,12 @@ public class HtmlCleanerService {
     public String clean(String rawHtml) {
         Document doc = Jsoup.parse(rawHtml);
 
-        // 1. Remove entire tags that add zero text value
+        // 1a. Promote CSS background-image URLs into synthetic <img> hints for the AI
+        for (Element styleTag : doc.select("style")) {
+            injectBackgroundImageHints(styleTag);
+        }
+
+        // 1b. Remove entire tags that add zero text value
         doc.select("style, svg, link, meta, noscript, iframe, canvas, " +
                    "template, map, track, object, embed")
            .remove();
@@ -75,6 +81,7 @@ public class HtmlCleanerService {
         // 3. Strip noisy attributes from every remaining element
         Elements allElements = doc.getAllElements();
         for (Element el : allElements) {
+            preserveProfileBackgroundStyle(el);
             for (String attr : NOISE_ATTRIBUTES) {
                 el.removeAttr(attr);
             }
@@ -98,5 +105,47 @@ public class HtmlCleanerService {
                 100.0 * (originalLen - cleanedLen) / originalLen);
 
         return cleaned;
+    }
+
+    /**
+     * Keeps only {@code background-image: url(...)} from inline styles so the AI
+     * can detect profile photos rendered via CSS on {@code <div>} elements.
+     */
+    private void preserveProfileBackgroundStyle(Element el) {
+        String style = el.attr("style");
+        if (style.isBlank()) {
+            return;
+        }
+        String backgroundUrl = PortfolioImageUtils.extractBackgroundImageUrl(style);
+        if (backgroundUrl != null) {
+            el.attr("style", "background-image: url('" + backgroundUrl + "')");
+        } else {
+            el.removeAttr("style");
+        }
+    }
+
+    /**
+     * Converts {@code background-image: url(...)} rules from a {@code <style>}
+     * block into synthetic {@code <img>} tags the AI can read as profile photos.
+     */
+    private void injectBackgroundImageHints(Element styleTag) {
+        String css = styleTag.data();
+        java.util.regex.Matcher matcher = java.util.regex.Pattern.compile(
+                "background-image\\s*:\\s*url\\(\\s*['\"]?([^)'\"\\s]+)['\"]?\\s*\\)",
+                java.util.regex.Pattern.CASE_INSENSITIVE).matcher(css);
+
+        StringBuilder hints = new StringBuilder();
+        while (matcher.find()) {
+            String path = matcher.group(1);
+            if (PortfolioImageUtils.isRelativeImagePath(path)) {
+                hints.append("<img src=\"")
+                        .append(path)
+                        .append("\" data-source=\"css-background-image\">");
+            }
+        }
+
+        if (!hints.isEmpty()) {
+            styleTag.after(hints.toString());
+        }
     }
 }
