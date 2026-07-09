@@ -201,15 +201,17 @@ public class GitHubService {
     /**
      * Commits updated HTML back to the repo.
      *
-     * @param sha the blob SHA obtained from fetchPortfolioHtml — GitHub requires
-     *            this to prevent conflicts (acts like an optimistic lock).
+     * @param sha    the blob SHA obtained from fetchPortfolioHtml — GitHub requires
+     *               this to prevent conflicts (acts like an optimistic lock).
+     * @param branch the branch to commit to (e.g. "main", "gh-pages"). If null or
+     *               blank, the repo's default branch is used.
      */
     public String commitPortfolioHtml(String owner, String repo, String token,
-            String sha, String updatedHtml, String filePath) {
+            String sha, String updatedHtml, String filePath, String branch) {
 
         String url = GITHUB_API_BASE + "/repos/" + owner + "/" + repo + "/contents/" + filePath;
 
-        System.out.println("DEBUG: Committing to GitHub URL: " + url);
+        System.out.println("DEBUG: Committing to GitHub URL: " + url + " (branch=" + branch + ")");
         if (token != null && token.length() > 10) {
             System.out.println("DEBUG: Using token starting with: " + token.substring(0, 8) + "...");
         } else {
@@ -220,10 +222,14 @@ public class GitHubService {
         String encodedContent = Base64.getEncoder().encodeToString(
                 updatedHtml.getBytes(StandardCharsets.UTF_8));
 
-        Map<String, String> requestBody = Map.of(
-                "message", "Updated portfolio via Portfolio Editor app",
-                "content", encodedContent,
-                "sha", sha);
+        // Build mutable body so we can conditionally include 'branch'
+        Map<String, String> requestBody = new HashMap<>();
+        requestBody.put("message", "Updated portfolio via Portfolio Editor app");
+        requestBody.put("content", encodedContent);
+        requestBody.put("sha", sha);
+        if (branch != null && !branch.isBlank()) {
+            requestBody.put("branch", branch);
+        }
 
         try {
             return restClient.put()
@@ -261,10 +267,15 @@ public class GitHubService {
      * body.
      *
      * @param filePath path relative to repo root, e.g. "images/profile.jpg"
+     * @param branch   the branch to check (null → repo default)
      * @return the blob sha string if the file exists, or null if it returns 404
      */
-    public String getFileShaIfExists(String owner, String repo, String token, String filePath) {
+    public String getFileShaIfExists(String owner, String repo, String token, String filePath, String branch) {
         String url = GITHUB_API_BASE + "/repos/" + owner + "/" + repo + "/contents/" + filePath;
+        // Append ?ref= so we query the correct branch
+        if (branch != null && !branch.isBlank()) {
+            url = url + "?ref=" + branch;
+        }
         try {
             GitHubFile file = restClient.get()
                     .uri(url)
@@ -293,11 +304,13 @@ public class GitHubService {
      * @param imageName  filename to use inside the images/ directory, e.g.
      *                   "profile.jpg"
      * @param imageBytes raw bytes of the image (pre-compressed by the Android app)
+     * @param branch     the branch to commit to (e.g. "gh-pages"). If null or
+     *                   blank, the repo's default branch is used.
      * @return the public GitHub Pages URL for the uploaded image,
      *         e.g. "https://{owner}.github.io/{repo}/images/profile.jpg"
      */
     public String uploadProfileImage(String owner, String repo, String token,
-            String imageName, byte[] imageBytes) {
+            String imageName, byte[] imageBytes, String branch) {
 
         String filePath = "images/" + imageName;
         String url = GITHUB_API_BASE + "/repos/" + owner + "/" + repo + "/contents/" + filePath;
@@ -306,8 +319,8 @@ public class GitHubService {
         // base64
         String encodedContent = Base64.getEncoder().encodeToString(imageBytes);
 
-        // Check whether the file already exists; include sha in the body if so
-        String existingSha = getFileShaIfExists(owner, repo, token, filePath);
+        // Check whether the file already exists on the target branch; include sha if so
+        String existingSha = getFileShaIfExists(owner, repo, token, filePath, branch);
 
         // Build the request body — sha is only included when updating an existing file
         Map<String, String> requestBody = new HashMap<>();
@@ -315,6 +328,9 @@ public class GitHubService {
         requestBody.put("content", encodedContent);
         if (existingSha != null) {
             requestBody.put("sha", existingSha);
+        }
+        if (branch != null && !branch.isBlank()) {
+            requestBody.put("branch", branch);
         }
 
         try {

@@ -134,7 +134,7 @@ public class ResumeController {
         String repoName = (request.getRepo() != null) ? request.getRepo().replaceAll("[/.]+$", "") : "";
         String commitResponseJson = gitHubService.commitPortfolioHtml(
                 request.getOwner(), repoName, token,
-                request.getSha(), updatedHtml, filePath);
+                request.getSha(), updatedHtml, filePath, request.getBranch());
 
         // 3. Extract the commit URL and new SHA from the GitHub API response
         String commitUrl = extractCommitUrl(commitResponseJson);
@@ -156,13 +156,15 @@ public class ResumeController {
      * the next "Save & Publish" via the existing /resume/update endpoint.
      *
      * Request: multipart/form-data
-     *   - image: the image file (MultipartFile)
-     *   - repo:  the GitHub repository name
+     *   - image:  the image file (MultipartFile)
+     *   - repo:   the GitHub repository name
+     *   - branch: (optional) the branch to commit to (e.g. "gh-pages")
      */
     @PostMapping("/upload-image")
     public ResponseEntity<?> uploadImage(
             @RequestParam("image") MultipartFile image,
             @RequestParam("repo") String repo,
+            @RequestParam(value = "branch", required = false) String branch,
             HttpServletRequest httpRequest) {
 
         String token = resolveGitHubToken(httpRequest);
@@ -180,7 +182,7 @@ public class ResumeController {
         }
 
         String imageName = "profile.jpg";
-        String imageUrl = gitHubService.uploadProfileImage(owner, repoName, token, imageName, imageBytes);
+        String imageUrl = gitHubService.uploadProfileImage(owner, repoName, token, imageName, imageBytes, branch);
 
         return ResponseEntity.ok(Map.of("imageUrl", imageUrl));
     }
