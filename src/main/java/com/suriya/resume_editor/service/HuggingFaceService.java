@@ -153,18 +153,28 @@ public class HuggingFaceService {
     }
 
     /**
-     * LLMs sometimes wrap output in ```json ... ``` blocks even when instructed not to.
-     * This strips those fences so Jackson can parse the JSON cleanly.
+     * LLMs (especially Llama 3) sometimes include conversational text before or after the JSON,
+     * or wrap output in ```json ... ``` blocks even when instructed not to.
+     * This safely extracts just the root JSON object/array so Jackson can parse it cleanly.
      */
     private String stripMarkdownFences(String text) {
-        String trimmed = text.trim();
-        if (trimmed.startsWith("```")) {
-            trimmed = trimmed.replaceFirst("^```[a-zA-Z]*\\n?", "");
-            if (trimmed.endsWith("```")) {
-                trimmed = trimmed.substring(0, trimmed.lastIndexOf("```")).trim();
-            }
+        if (text == null || text.isBlank()) return "{}";
+        
+        // Find the first '{' and the last '}'
+        int start = text.indexOf('{');
+        int end = text.lastIndexOf('}');
+        
+        // If it looks like an array instead of an object, try '[' and ']'
+        if (start == -1 || (text.indexOf('[') != -1 && text.indexOf('[') < start)) {
+            start = text.indexOf('[');
+            end = text.lastIndexOf(']');
         }
-        return trimmed;
+        
+        if (start != -1 && end != -1 && end > start) {
+            return text.substring(start, end + 1);
+        }
+        
+        return text.trim();
     }
 
     private ResumeData parseResumeData(String jsonContent) {
