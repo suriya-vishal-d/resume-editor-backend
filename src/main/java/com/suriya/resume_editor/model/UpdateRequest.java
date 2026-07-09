@@ -7,6 +7,7 @@ public class UpdateRequest {
     private String owner;
     private String repo;
     private String filePath;
+    private String branch;
     private String sha;
     private String originalHtml;
     private ResumeData resumeData;
