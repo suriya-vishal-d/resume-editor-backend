@@ -326,7 +326,7 @@ public class GitHubService {
         String encodedContent = Base64.getEncoder().encodeToString(imageBytes);
 
         // Check whether the file already exists; include sha in the body if so
-        String existingSha = getFileShaIfExists(owner, repo, token, filePath);
+        String existingSha = getFileShaIfExists(owner, repo, token, filePath, null);
 
         // Build the request body — sha is only included when updating an existing file
         Map<String, String> requestBody = new HashMap<>();
