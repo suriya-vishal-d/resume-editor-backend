@@ -196,6 +196,39 @@ public class ResumeController {
                 "basePath",  detectedBasePath));
     }
 
+    /**
+     * POST /resume/delete-image
+     * Deletes the profile image file from the GitHub repo and clears the avatar
+     * field in the portfolio JSON data.
+     *
+     * Request params:
+     *   - repo:         the GitHub repository name
+     *   - imagePath:    the repo-relative path to delete, e.g. "assets/img/profile.jpg"
+     */
+    @PostMapping("/delete-image")
+    public ResponseEntity<?> deleteImage(
+            @RequestParam("repo") String repo,
+            @RequestParam("imagePath") String imagePath,
+            HttpServletRequest httpRequest) {
+
+        String token = resolveGitHubToken(httpRequest);
+        String owner = jwtService.extractUsername(
+                httpRequest.getHeader("Authorization").substring(7));
+
+        String repoName = (repo != null) ? repo.replaceAll("[/.]+$", "") : "";
+
+        // Look up the current sha — needed for the GitHub DELETE API
+        String sha = gitHubService.getFileShaIfExists(owner, repoName, token, imagePath, null);
+        if (sha == null) {
+            // File doesn't exist on GitHub — nothing to delete, return OK
+            return ResponseEntity.ok(Map.of("message", "Image not found on GitHub (already deleted or never uploaded)."));
+        }
+
+        gitHubService.deleteFile(owner, repoName, token, imagePath, sha);
+
+        return ResponseEntity.ok(Map.of("message", "Image deleted successfully."));
+    }
+
     // -------------------------------------------------------------------------
     // Stats
     // -------------------------------------------------------------------------

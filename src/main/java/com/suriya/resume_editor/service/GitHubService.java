@@ -299,7 +299,42 @@ public class GitHubService {
     }
 
     /**
+     * Deletes a file from the GitHub repo by sending a DELETE to the GitHub Contents API.
+     *
+     * @param filePath repo-relative path of the file to delete, e.g. "assets/img/profile.jpg"
+     * @param sha      the current blob sha of the file (required by GitHub to prevent conflicts)
+     */
+    public void deleteFile(String owner, String repo, String token, String filePath, String sha) {
+        String url = GITHUB_API_BASE + "/repos/" + owner + "/" + repo + "/contents/" + filePath;
+
+        Map<String, String> requestBody = new HashMap<>();
+        requestBody.put("message", "Removed profile photo via Portfolio Editor app");
+        requestBody.put("sha", sha);
+
+        try {
+            restClient.delete()
+                    .uri(url)
+                    .header("Authorization", "Bearer " + token)
+                    .header("Accept", "application/vnd.github+json")
+                    .header("Content-Type", "application/json")
+                    .body(requestBody)
+                    .retrieve()
+                    .body(String.class);
+        } catch (HttpClientErrorException.Unauthorized e) {
+            throw new GitHubCommitException(
+                    "GitHub token is invalid or expired. Please re-authenticate.");
+        } catch (HttpClientErrorException.Forbidden e) {
+            throw new GitHubCommitException(
+                    "Permission denied: ensure your GitHub token has 'repo' scope and write access to this repository.");
+        } catch (HttpClientErrorException e) {
+            throw new GitHubCommitException(
+                    "GitHub API error while deleting image: " + e.getStatusCode() + " " + e.getMessage());
+        }
+    }
+
+    /**
      * Uploads a binary image to the GitHub repo under {basePath}/{imageName}.
+
      * If the file already exists, its sha is fetched first and included in the PUT
      * body so GitHub replaces it cleanly instead of returning a 422 conflict.
      *
