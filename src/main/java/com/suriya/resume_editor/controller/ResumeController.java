@@ -22,6 +22,8 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
 import java.util.Map;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 @RestController
 @RequestMapping("/resume")
@@ -148,6 +150,51 @@ public class ResumeController {
         ));
     }
 
+    /**
+     * POST /resume/upload-image
+     * Uploads an image file to the GitHub repo using the folder structure already
+     * present in the portfolio's HTML (auto-detected). Falls back to images/ if
+     * no &lt;img&gt; tags are found.
+     *
+     * Request: multipart/form-data
+     *   - image:        the image file (MultipartFile)
+     *   - repo:         the GitHub repository name
+     *   - originalHtml: (optional) the raw HTML of index.html — used to detect
+     *                   the image base path used by this portfolio
+     */
+    @PostMapping("/upload-image")
+    public ResponseEntity<?> uploadImage(
+            @RequestParam("image") MultipartFile image,
+            @RequestParam("repo") String repo,
+            @RequestParam(value = "originalHtml", required = false) String originalHtml,
+            HttpServletRequest httpRequest) {
+
+        String token = resolveGitHubToken(httpRequest);
+        String owner = jwtService.extractUsername(
+                httpRequest.getHeader("Authorization").substring(7));
+
+        String repoName = (repo != null) ? repo.replaceAll("[/.]+$", "") : "";
+
+        byte[] imageBytes;
+        try {
+            imageBytes = image.getBytes();
+        } catch (IOException e) {
+            return ResponseEntity.badRequest()
+                    .body(Map.of("error", "Failed to read image bytes: " + e.getMessage()));
+        }
+
+        // Detect where this portfolio stores its images (e.g. "assets/img/")
+        // so we upload the new photo to the same place, not a hardcoded path.
+        String detectedBasePath = detectImageBasePath(originalHtml);
+
+        String imageName = "profile.jpg";
+        String imageUrl = gitHubService.uploadProfileImage(
+                owner, repoName, token, detectedBasePath, imageName, imageBytes);
+
+        return ResponseEntity.ok(Map.of(
+                "imageUrl",  imageUrl,
+                "basePath",  detectedBasePath));
+    }
 
     // -------------------------------------------------------------------------
     // Stats
@@ -180,6 +227,54 @@ public class ResumeController {
             throw new RuntimeException("GitHub access token not found in JWT claims.");
         }
         return token;
+    }
+
+    /**
+     * Scans the portfolio HTML for the first {@code <img src="...">} tag whose
+     * src is a relative path (not a data URI or absolute URL), and extracts the
+     * directory portion as the image base path.
+     *
+     * <p>Examples:
+     * <ul>
+     *   <li>{@code src="assets/img/photo.jpg"} → {@code "assets/img"}</li>
+     *   <li>{@code src="images/me.png"}        → {@code "images"}</li>
+     *   <li>No match / null HTML               → {@code "images"} (default)</li>
+     * </ul>
+     *
+     * @param html the raw HTML string of the portfolio index page, may be null
+     * @return the detected base path (no leading/trailing slash), never null
+     */
+    private String detectImageBasePath(String html) {
+        if (html == null || html.isBlank()) {
+            return "images";
+        }
+
+        // Match src="..." or src='...' inside any tag, capturing the value.
+        // We deliberately exclude data: URIs and absolute URLs (http/https//).
+        Pattern pattern = Pattern.compile(
+                "<img[^>]+src=[\"'](?!data:|https?://|//)([^\"']+)[\"']",
+                Pattern.CASE_INSENSITIVE);
+        Matcher matcher = pattern.matcher(html);
+
+        while (matcher.find()) {
+            String src = matcher.group(1).trim();
+            // Strip query-strings / fragments
+            int q = src.indexOf('?');
+            if (q != -1) src = src.substring(0, q);
+            int h = src.indexOf('#');
+            if (h != -1) src = src.substring(0, h);
+
+            // Only process paths that contain a directory separator
+            int lastSlash = src.lastIndexOf('/');
+            if (lastSlash > 0) {
+                String folder = src.substring(0, lastSlash);
+                System.out.println("INFO: Detected image base path from HTML: '" + folder + "'");
+                return folder;
+            }
+        }
+
+        System.out.println("INFO: No relative <img src> with a folder found — defaulting to 'images'.");
+        return "images";
     }
 
     /**

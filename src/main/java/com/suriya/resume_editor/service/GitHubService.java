@@ -298,6 +298,78 @@ public class GitHubService {
         }
     }
 
+    /**
+     * Uploads a binary image to the GitHub repo under {basePath}/{imageName}.
+     * If the file already exists, its sha is fetched first and included in the PUT
+     * body so GitHub replaces it cleanly instead of returning a 422 conflict.
+     *
+     * @param basePath   folder path detected from the portfolio HTML, e.g. "assets/img/"
+     *                   (must end with "/"). Falls back to "images/" if null or blank.
+     * @param imageName  filename to use inside the base directory, e.g. "profile.jpg"
+     * @param imageBytes raw bytes of the image (pre-compressed by the Android app)
+     * @return the public GitHub Pages URL for the uploaded image,
+     *         e.g. "https://{owner}.github.io/{repo}/assets/img/profile.jpg"
+     */
+    public String uploadProfileImage(String owner, String repo, String token,
+            String basePath, String imageName, byte[] imageBytes) {
+
+        // Normalise basePath: ensure it ends with exactly one slash
+        String normalizedBase = (basePath != null && !basePath.isBlank())
+                ? basePath.stripTrailing().replaceAll("/+$", "") + "/"
+                : "images/";
+
+        String filePath = normalizedBase + imageName;
+        String url = GITHUB_API_BASE + "/repos/" + owner + "/" + repo + "/contents/" + filePath;
+
+        // Base64-encode the raw image bytes — no line breaks, GitHub requires clean
+        // base64
+        String encodedContent = Base64.getEncoder().encodeToString(imageBytes);
+
+        // Check whether the file already exists; include sha in the body if so
+        String existingSha = getFileShaIfExists(owner, repo, token, filePath);
+
+        // Build the request body — sha is only included when updating an existing file
+        Map<String, String> requestBody = new HashMap<>();
+        requestBody.put("message", "Updated profile photo via Portfolio Editor app");
+        requestBody.put("content", encodedContent);
+        if (existingSha != null) {
+            requestBody.put("sha", existingSha);
+        }
+
+        try {
+            restClient.put()
+                    .uri(url)
+                    .header("Authorization", "Bearer " + token)
+                    .header("Accept", "application/vnd.github+json")
+                    .header("Content-Type", "application/json")
+                    .body(requestBody)
+                    .retrieve()
+                    .body(String.class);
+        } catch (HttpClientErrorException.Unauthorized e) {
+            throw new GitHubCommitException(
+                    "GitHub token is invalid or expired. Please re-authenticate.");
+        } catch (HttpClientErrorException.Forbidden e) {
+            throw new GitHubCommitException(
+                    "Permission denied: ensure your GitHub token has 'repo' scope and write access to this repository.");
+        } catch (HttpClientErrorException.UnprocessableEntity e) {
+            throw new GitHubCommitException(
+                    "GitHub rejected the image upload (422). The file may have been modified externally. Please try again.");
+        } catch (HttpClientErrorException e) {
+            throw new GitHubCommitException(
+                    "GitHub API error while uploading image: " + e.getStatusCode() + " " + e.getMessage());
+        }
+
+        // Build and return the GitHub Pages URL
+        // Special case: if repo is the user's root GitHub Pages repo (owner.github.io),
+        // the Pages URL has no sub-path prefix.
+        String repoLower = repo.toLowerCase();
+        String ownerLower = owner.toLowerCase();
+        if (repoLower.equals(ownerLower + ".github.io")) {
+            return "https://" + ownerLower + ".github.io/" + filePath;
+        } else {
+            return "https://" + ownerLower + ".github.io/" + repo + "/" + filePath;
+        }
+    }
 
     /**
      * Fetches basic repository statistics (stars, watchers, forks) from GitHub API.
