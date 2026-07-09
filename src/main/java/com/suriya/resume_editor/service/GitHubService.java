@@ -14,6 +14,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.Base64;
 import java.util.HashMap;
 import java.util.Map;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 @Service
 public class GitHubService {
@@ -21,6 +22,7 @@ public class GitHubService {
     private static final String GITHUB_API_BASE = "https://api.github.com";
 
     private final RestClient restClient;
+    private final ObjectMapper objectMapper = new ObjectMapper();
 
     public GitHubService(RestClient restClient) {
         this.restClient = restClient;
@@ -296,78 +298,6 @@ public class GitHubService {
         }
     }
 
-    /**
-     * Uploads a binary image to the GitHub repo under images/{imageName}.
-     * If the file already exists, its sha is fetched first and included in the PUT
-     * body so GitHub replaces it cleanly instead of returning a 422 conflict.
-     *
-     * @param imageName  filename to use inside the images/ directory, e.g.
-     *                   "profile.jpg"
-     * @param imageBytes raw bytes of the image (pre-compressed by the Android app)
-     * @param branch     the branch to commit to (e.g. "gh-pages"). If null or
-     *                   blank, the repo's default branch is used.
-     * @return the public GitHub Pages URL for the uploaded image,
-     *         e.g. "https://{owner}.github.io/{repo}/images/profile.jpg"
-     */
-    public String uploadProfileImage(String owner, String repo, String token,
-            String imageName, byte[] imageBytes, String branch) {
-
-        String filePath = "images/" + imageName;
-        String url = GITHUB_API_BASE + "/repos/" + owner + "/" + repo + "/contents/" + filePath;
-
-        // Base64-encode the raw image bytes — no line breaks, GitHub requires clean
-        // base64
-        String encodedContent = Base64.getEncoder().encodeToString(imageBytes);
-
-        // Check whether the file already exists on the target branch; include sha if so
-        String existingSha = getFileShaIfExists(owner, repo, token, filePath, branch);
-
-        // Build the request body — sha is only included when updating an existing file
-        Map<String, String> requestBody = new HashMap<>();
-        requestBody.put("message", "Updated profile photo via Portfolio Editor app");
-        requestBody.put("content", encodedContent);
-        if (existingSha != null) {
-            requestBody.put("sha", existingSha);
-        }
-        if (branch != null && !branch.isBlank()) {
-            requestBody.put("branch", branch);
-        }
-
-        try {
-            restClient.put()
-                    .uri(url)
-                    .header("Authorization", "Bearer " + token)
-                    .header("Accept", "application/vnd.github+json")
-                    .header("Content-Type", "application/json")
-                    .body(requestBody)
-                    .retrieve()
-                    .body(String.class);
-        } catch (HttpClientErrorException.Unauthorized e) {
-            throw new GitHubCommitException(
-                    "GitHub token is invalid or expired. Please re-authenticate.");
-        } catch (HttpClientErrorException.Forbidden e) {
-            throw new GitHubCommitException(
-                    "Permission denied: ensure your GitHub token has 'repo' scope and write access to this repository.");
-        } catch (HttpClientErrorException.UnprocessableEntity e) {
-            throw new GitHubCommitException(
-                    "GitHub rejected the image upload (422). The file may have been modified externally. Please try again.");
-        } catch (HttpClientErrorException e) {
-            throw new GitHubCommitException(
-                    "GitHub API error while uploading image: " + e.getStatusCode() + " " + e.getMessage());
-        }
-
-        // Build and return the GitHub Pages URL
-        // Pattern: https://{owner}.github.io/{repo}/images/{imageName}
-        // Special case: if repo is the user's root GitHub Pages repo (owner.github.io),
-        // the Pages URL has no sub-path prefix.
-        String repoLower = repo.toLowerCase();
-        String ownerLower = owner.toLowerCase();
-        if (repoLower.equals(ownerLower + ".github.io")) {
-            return "https://" + ownerLower + ".github.io/images/" + imageName;
-        } else {
-            return "https://" + ownerLower + ".github.io/" + repo + "/images/" + imageName;
-        }
-    }
 
     /**
      * Fetches basic repository statistics (stars, watchers, forks) from GitHub API.

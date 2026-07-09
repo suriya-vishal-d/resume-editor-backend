@@ -148,44 +148,6 @@ public class ResumeController {
         ));
     }
 
-    /**
-     * POST /resume/upload-image
-     * Uploads an image file to the GitHub repo's images/ directory and returns
-     * the public GitHub Pages URL. The HTML update is deferred — the Android app
-     * stores the returned URL in resumeData.profileImageUrl and commits it on
-     * the next "Save & Publish" via the existing /resume/update endpoint.
-     *
-     * Request: multipart/form-data
-     *   - image:  the image file (MultipartFile)
-     *   - repo:   the GitHub repository name
-     *   - branch: (optional) the branch to commit to (e.g. "gh-pages")
-     */
-    @PostMapping("/upload-image")
-    public ResponseEntity<?> uploadImage(
-            @RequestParam("image") MultipartFile image,
-            @RequestParam("repo") String repo,
-            @RequestParam(value = "branch", required = false) String branch,
-            HttpServletRequest httpRequest) {
-
-        String token = resolveGitHubToken(httpRequest);
-        String owner = jwtService.extractUsername(
-                httpRequest.getHeader("Authorization").substring(7));
-
-        String repoName = (repo != null) ? repo.replaceAll("[/.]+$", "") : "";
-
-        byte[] imageBytes;
-        try {
-            imageBytes = image.getBytes();
-        } catch (IOException e) {
-            return ResponseEntity.badRequest()
-                    .body(Map.of("error", "Failed to read image bytes: " + e.getMessage()));
-        }
-
-        String imageName = "profile.jpg";
-        String imageUrl = gitHubService.uploadProfileImage(owner, repoName, token, imageName, imageBytes, branch);
-
-        return ResponseEntity.ok(Map.of("imageUrl", imageUrl));
-    }
 
     // -------------------------------------------------------------------------
     // Stats
