@@ -312,7 +312,7 @@ public class GitHubService {
         requestBody.put("sha", sha);
 
         try {
-            restClient.delete()
+            restClient.method(org.springframework.http.HttpMethod.DELETE)
                     .uri(url)
                     .header("Authorization", "Bearer " + token)
                     .header("Accept", "application/vnd.github+json")
