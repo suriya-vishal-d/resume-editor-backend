@@ -7,4 +7,5 @@ public class Contact {
     private String email;
     private String linkedin;
     private String github;
+    private String website;
 }

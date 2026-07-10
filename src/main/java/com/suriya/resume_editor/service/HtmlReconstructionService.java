@@ -42,8 +42,13 @@ public class HtmlReconstructionService {
             }
 
             // ----------------------------------------------------------------
-            // Contact links — update href only, preserve link display text
+            // Contact links & Resume PDF
             // ----------------------------------------------------------------
+            if (resumeData.getResumePdfUrl() != null && !resumeData.getResumePdfUrl().isBlank()) {
+                updateAttr(doc, "a[href*=.pdf], a.resume-btn, a#resume, [download], a:contains(Resume), a:contains(CV)",
+                        "href", resumeData.getResumePdfUrl());
+            }
+
             if (resumeData.getContact() != null) {
                 if (resumeData.getContact().getEmail() != null) {
                     updateAttr(doc, "a[href^=mailto]",
@@ -56,6 +61,16 @@ public class HtmlReconstructionService {
                 if (resumeData.getContact().getLinkedin() != null) {
                     updateAttr(doc, "a[href*=linkedin.com]",
                             "href", resumeData.getContact().getLinkedin());
+                }
+                if (resumeData.getContact().getWebsite() != null) {
+                    // Try to update specifically in contact/footer sections to avoid overwriting project links
+                    Element contactSection = doc.select(".contact, #contact, footer").first();
+                    if (contactSection != null) {
+                        Element websiteLink = contactSection.select("a[href^=http]:not([href*=github.com]):not([href*=linkedin.com]), .website a, a.website").first();
+                        if (websiteLink != null) {
+                            websiteLink.attr("href", resumeData.getContact().getWebsite());
+                        }
+                    }
                 }
             }
 
@@ -109,6 +124,15 @@ public class HtmlReconstructionService {
                             Element link = card.select("a[href]").first();
                             if (link != null) link.attr("href", project.getLink());
                         }
+                        if (project.getTechStack() != null && !project.getTechStack().isEmpty()) {
+                            Element badgesContainer = card.select(".tech-stack, .badges, .tags, [class*=badge-group], ul").first();
+                            if (badgesContainer != null) {
+                                var badges = badgesContainer.select("span, li, .badge, [class*=badge], [class*=tag]");
+                                for (int j = 0; j < Math.min(badges.size(), project.getTechStack().size()); j++) {
+                                    badges.get(j).text(project.getTechStack().get(j));
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -121,7 +145,7 @@ public class HtmlReconstructionService {
                         ".experience, #experience, [class*=experience]").first();
                 if (expSection != null) {
                     var entries = expSection.select(
-                            ".job, .entry, [class*=experience-item], [class*=job-item], article");
+                            ".job, .entry, [class*=experience-item], [class*=job-item], article, .card");
                     for (int i = 0; i < Math.min(entries.size(), resumeData.getExperience().size()); i++) {
                         Element entry = entries.get(i);
                         var exp = resumeData.getExperience().get(i);
@@ -130,10 +154,47 @@ public class HtmlReconstructionService {
                             Element role = entry.select("h2, h3, h4, .role, .title, [class*=role]").first();
                             if (role != null) role.text(exp.getRole());
                         }
-                        if (exp.getCompany() != null) {
-                            Element company = entry.select(".company, [class*=company], span").first();
-                            if (company != null) company.text(exp.getCompany());
+                        
+                        // Heuristic for Date (usually a span, time, or specific class containing numbers/Present)
+                        String dateStr = formatDates(exp.getStartDate(), exp.getEndDate());
+                        if (dateStr != null && !dateStr.isBlank()) {
+                            Element dateEl = entry.select(".date, .time, .duration, .year, [class*=date], [class*=time], time").first();
+                            if (dateEl == null) {
+                                // Fallback: find any element whose text looks like a date range (e.g. "2024", "Present")
+                                for (Element el : entry.select("span, p, small, div")) {
+                                    String txt = el.text();
+                                    if (txt.matches(".*(?:20\\d{2}|19\\d{2}|Present|PRESENT|Current).*") && txt.length() < 30) {
+                                        dateEl = el;
+                                        break;
+                                    }
+                                }
+                            }
+                            if (dateEl != null) dateEl.text(dateStr);
                         }
+
+                        // Heuristic for Company (often has company class, or is a span/p that isn't the date)
+                        if (exp.getCompany() != null) {
+                            Element company = entry.select(".company, [class*=company]").first();
+                            if (company != null) company.text(exp.getCompany());
+                            // If no specific company element, we don't blindly overwrite spans anymore
+                        }
+                        
+                        // Heuristic for Description
+                        // (Usually a <p> or ul/li that is long)
+                        // If the template combines Company + Description in one <p>, we'd need complex text replacement.
+                        // But for standard templates with a description class:
+                        Element desc = entry.select(".description, .desc, [class*=desc]").first();
+                        if (desc == null) {
+                            // Find the longest <p> tag as a fallback
+                            for (Element p : entry.select("p")) {
+                                if (p.text().length() > 20) {
+                                    desc = p;
+                                    break;
+                                }
+                            }
+                        }
+                        // Currently our backend ResumeData model might not even map a description for experience,
+                        // but if it did, we'd set it here. We will just leave the hook ready.
                     }
                 }
             }
@@ -146,7 +207,7 @@ public class HtmlReconstructionService {
                         ".education, #education, [class*=education]").first();
                 if (eduSection != null) {
                     var entries = eduSection.select(
-                            ".edu-item, .entry, [class*=education-item], article, li");
+                            ".edu-item, .entry, [class*=education-item], article, li, .card");
                     for (int i = 0; i < Math.min(entries.size(), resumeData.getEducation().size()); i++) {
                         Element entry = entries.get(i);
                         var edu = resumeData.getEducation().get(i);
@@ -156,8 +217,29 @@ public class HtmlReconstructionService {
                             if (inst != null) inst.text(edu.getInstitution());
                         }
                         if (edu.getDegree() != null) {
-                            Element degree = entry.select(".degree, [class*=degree], span, p").first();
-                            if (degree != null) degree.text(edu.getDegree());
+                            // Combine degree + field if both exist
+                            String degreeText = edu.getDegree();
+                            if (edu.getField() != null && !edu.getField().isBlank()) {
+                                degreeText += " in " + edu.getField();
+                            }
+                            Element degree = entry.select(".degree, [class*=degree], h4, h5").first();
+                            if (degree == null) degree = entry.select("span, p").first(); // risky fallback
+                            if (degree != null) degree.text(degreeText);
+                        }
+                        
+                        String dateStr = formatDates(edu.getStartYear(), edu.getEndYear());
+                        if (dateStr != null && !dateStr.isBlank()) {
+                            Element dateEl = entry.select(".date, .time, .duration, .year, [class*=date], [class*=time], time").first();
+                            if (dateEl == null) {
+                                for (Element el : entry.select("span, p, small, div")) {
+                                    String txt = el.text();
+                                    if (txt.matches(".*(?:20\\d{2}|19\\d{2}|Present|PRESENT|Current).*") && txt.length() < 30) {
+                                        dateEl = el;
+                                        break;
+                                    }
+                                }
+                            }
+                            if (dateEl != null) dateEl.text(dateStr);
                         }
                     }
                 }
@@ -220,6 +302,16 @@ public class HtmlReconstructionService {
         if (value == null || value.isBlank()) return;
         Element el = doc.select(cssSelector).first();
         if (el != null) el.attr(attrName, value);
+    }
+
+    /**
+     * Helper to format a start and end date/year into a single string like "2020 - 2024".
+     */
+    private String formatDates(String start, String end) {
+        if ((start == null || start.isBlank()) && (end == null || end.isBlank())) return null;
+        if (start == null || start.isBlank()) return end;
+        if (end == null || end.isBlank()) return start + " - Present";
+        return start + " - " + end;
     }
 
     /**
