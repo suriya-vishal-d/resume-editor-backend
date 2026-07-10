@@ -225,6 +225,15 @@ public class HtmlReconstructionService {
     /**
      * Updates profile photos rendered as {@code <img src>} or as CSS
      * {@code background-image} on profile-like {@code <div>} elements.
+     *
+     * <p>Three-tier strategy:
+     * <ol>
+     *   <li>Update any existing {@code <img>} inside / matching a profile selector.</li>
+     *   <li>Replace an existing {@code background-image: url(...)} on a profile div.</li>
+     *   <li><b>Gradient-only fallback</b>: if the avatar div has no image at all
+     *       (e.g. only a {@code linear-gradient}), inject an {@code <img>} tag
+     *       inside it so the user's photo is rendered on top of the gradient.</li>
+     * </ol>
      */
     private void updateProfileImage(Document doc, String profileImageUrl) {
         String relativeUrl = PortfolioImageUtils.toRelativeImagePath(profileImageUrl);
@@ -233,13 +242,17 @@ public class HtmlReconstructionService {
                 + "[class*=avatar], [class*=profile], [class*=headshot], [class*=photo], "
                 + "#avatar, #profile, #profile-photo";
 
+        // ── Tier 1: update any existing <img> already inside a profile element ──
+        boolean updatedImg = false;
         for (Element img : doc.select(
                 "img.avatar, img.profile, img[class*=avatar], img[class*=profile], "
                         + "img[id*=avatar], img[id*=profile], .avatar img, .profile img, "
                         + "#avatar img, #profile img")) {
             img.attr("src", relativeUrl);
+            updatedImg = true;
         }
 
+        // ── Tier 2: replace an existing background-image URL on a profile div ──
         boolean updatedBackground = false;
         for (Element el : doc.select(profileSelector)) {
             String style = el.attr("style");
@@ -255,13 +268,46 @@ public class HtmlReconstructionService {
                 String currentPath = PortfolioImageUtils.extractBackgroundImageUrl(style);
                 if (currentPath != null && looksLikePhotoPath(currentPath)) {
                     el.attr("style", PortfolioImageUtils.replaceBackgroundImageUrl(style, relativeUrl));
+                    updatedBackground = true;
                     break;
                 }
             }
         }
 
+        // ── Update background-image inside <style> blocks ──
         for (Element styleEl : doc.select("style")) {
             styleEl.html(updateProfileBackgroundInCss(styleEl.html(), relativeUrl));
+        }
+
+        // ── Tier 3: gradient-only avatar fallback ────────────────────────────
+        // If neither an <img> nor a background-image URL was found, the template
+        // likely uses a pure CSS gradient (linear-gradient, etc.) as its avatar.
+        // Inject an absolutely-positioned <img> inside the first matching element
+        // so the photo overlays the gradient box without breaking the layout.
+        if (!updatedImg && !updatedBackground) {
+            Element avatarEl = doc.select(profileSelector).first();
+            if (avatarEl != null) {
+                // Make the container a positioning context if it isn't already
+                String containerStyle = avatarEl.attr("style");
+                if (!containerStyle.contains("position")) {
+                    containerStyle = containerStyle.trim();
+                    if (!containerStyle.isEmpty() && !containerStyle.endsWith(";")) {
+                        containerStyle += ";";
+                    }
+                    containerStyle += " position: relative; overflow: hidden;";
+                    avatarEl.attr("style", containerStyle.trim());
+                }
+
+                // Inject the <img> as first child, covering the full container
+                Element injected = new Element("img");
+                injected.attr("src", relativeUrl);
+                injected.attr("alt", "Profile picture");
+                injected.attr("style",
+                        "position: absolute; inset: 0; width: 100%; height: 100%;"
+                                + " object-fit: cover; border-radius: inherit;");
+                injected.attr("data-injected-by-resume-editor", "true");
+                avatarEl.prependChild(injected);
+            }
         }
     }
 
