@@ -318,50 +318,76 @@ public class HtmlReconstructionService {
      * Updates profile photos rendered as {@code <img src>} or as CSS
      * {@code background-image} on profile-like {@code <div>} elements.
      *
-     * <p>Three-tier strategy:
+     * <p>Four-tier strategy (evaluated in order, stops at first success):
      * <ol>
-     *   <li>Update any existing {@code <img>} inside / matching a profile selector.</li>
+     *   <li><b>Re-save guard</b>: update any {@code <img>} already injected by this
+     *       tool in a previous save (identified by {@code data-injected-by-resume-editor}).</li>
+     *   <li>Update any native {@code <img>} tag that is clearly a profile photo
+     *       (has an avatar/profile class or is a direct child of an avatar container).</li>
      *   <li>Replace an existing {@code background-image: url(...)} on a profile div.</li>
-     *   <li><b>Gradient-only fallback</b>: if the avatar div has no image at all
-     *       (e.g. only a {@code linear-gradient}), inject an {@code <img>} tag
-     *       inside it so the user's photo is rendered on top of the gradient.</li>
+     *   <li><b>Gradient-only fallback</b>: if the template avatar div uses only a CSS
+     *       gradient with no image placeholder, inject a covering {@code <img>} inside
+     *       the most specific (smallest) avatar container found.</li>
      * </ol>
      */
     private void updateProfileImage(Document doc, String profileImageUrl) {
         String relativeUrl = PortfolioImageUtils.toRelativeImagePath(profileImageUrl);
 
-        String profileSelector = ".avatar, .profile, .profile-photo, .profile-pic, .profile-img, "
-                + "[class*=avatar], [class*=profile], [class*=headshot], [class*=photo], "
-                + "#avatar, #profile, #profile-photo";
+        // ── Tier 0 (re-save guard): update any img we previously injected ────
+        // This MUST run first to prevent duplicate injection on subsequent saves.
+        boolean alreadyInjected = false;
+        for (Element img : doc.select("img[data-injected-by-resume-editor]")) {
+            img.attr("src", relativeUrl);
+            alreadyInjected = true;
+        }
+        if (alreadyInjected) {
+            // Also update <style> blocks in case the CSS was patched in a prior save
+            for (Element styleEl : doc.select("style")) {
+                styleEl.html(updateProfileBackgroundInCss(styleEl.html(), relativeUrl));
+            }
+            return; // Done — no further injection needed
+        }
 
-        // ── Tier 1: update any existing <img> already inside a profile element ──
+        // Selectors ordered from most-specific (small avatar box) to least-specific.
+        // We deliberately EXCLUDE broad containers like .profile-card / .profile-info
+        // that wrap the whole sidebar panel, to avoid injecting into the wrong element.
+        String avatarSelector = ".avatar, .avatar-wrap, .avatar-img, "
+                + ".profile-photo, .profile-pic, .profile-img, "
+                + "#avatar, #profile-photo, "
+                + "[class*=avatar-wrap], [class*=avatar-img], "
+                + "[class*=headshot], [class*=photo]";
+
+        // ── Tier 1: update a native <img> with an avatar/profile class ──────
         boolean updatedImg = false;
         for (Element img : doc.select(
-                "img.avatar, img.profile, img[class*=avatar], img[class*=profile], "
-                        + "img[id*=avatar], img[id*=profile], .avatar img, .profile img, "
-                        + "#avatar img, #profile img")) {
+                "img.avatar, img.avatar-img, img[class*=avatar], "
+                        + "img.profile-photo, img.profile-pic, img.profile-img, "
+                        + "img[id*=avatar], img[id*=profile-photo], "
+                        + ".avatar img, .avatar-wrap img, #avatar img")) {
             img.attr("src", relativeUrl);
             updatedImg = true;
         }
 
         // ── Tier 2: replace an existing background-image URL on a profile div ──
         boolean updatedBackground = false;
-        for (Element el : doc.select(profileSelector)) {
-            String style = el.attr("style");
-            if (PortfolioImageUtils.extractBackgroundImageUrl(style) != null) {
-                el.attr("style", PortfolioImageUtils.replaceBackgroundImageUrl(style, relativeUrl));
-                updatedBackground = true;
-            }
-        }
-
-        if (!updatedBackground) {
-            for (Element el : doc.select("[style*=background-image]")) {
+        if (!updatedImg) {
+            for (Element el : doc.select(avatarSelector)) {
                 String style = el.attr("style");
-                String currentPath = PortfolioImageUtils.extractBackgroundImageUrl(style);
-                if (currentPath != null && looksLikePhotoPath(currentPath)) {
+                if (PortfolioImageUtils.extractBackgroundImageUrl(style) != null) {
                     el.attr("style", PortfolioImageUtils.replaceBackgroundImageUrl(style, relativeUrl));
                     updatedBackground = true;
                     break;
+                }
+            }
+            if (!updatedBackground) {
+                for (Element el : doc.select("[style*=background-image]")) {
+                    String style = el.attr("style");
+                    String currentPath = PortfolioImageUtils.extractBackgroundImageUrl(style);
+                    if (currentPath != null && looksLikePhotoPath(currentPath)) {
+                        el.attr("style", PortfolioImageUtils.replaceBackgroundImageUrl(style, relativeUrl));
+                        updatedBackground = true;
+                        break;
+                    }
                 }
             }
         }
@@ -372,12 +398,16 @@ public class HtmlReconstructionService {
         }
 
         // ── Tier 3: gradient-only avatar fallback ────────────────────────────
-        // If neither an <img> nor a background-image URL was found, the template
-        // likely uses a pure CSS gradient (linear-gradient, etc.) as its avatar.
-        // Inject an absolutely-positioned <img> inside the first matching element
-        // so the photo overlays the gradient box without breaking the layout.
+        // Only inject if we haven't updated any img or background-image yet.
+        // Target the SMALLEST avatar-specific container, not a large card wrapper.
         if (!updatedImg && !updatedBackground) {
-            Element avatarEl = doc.select(profileSelector).first();
+            // Prefer the most specific avatar container (e.g. .avatar-wrap, .avatar)
+            // and explicitly reject large wrappers like .profile-card / .sidebar
+            Element avatarEl = doc.select(avatarSelector).first();
+            if (avatarEl == null) {
+                // Last resort: any element whose class literally contains 'avatar'
+                avatarEl = doc.select("[class*=avatar]").first();
+            }
             if (avatarEl != null) {
                 // Make the container a positioning context if it isn't already
                 String containerStyle = avatarEl.attr("style");
